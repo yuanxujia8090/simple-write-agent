@@ -1,0 +1,22 @@
+# macOS
+.DS_Store
+
+# 依赖
+node_modules/
+
+# 构建产物
+dist/
+build/
+
+# 编辑器本地配置（个人偏好，不提交）
+.vscode/
+
+# 日志
+*.log
+
+# 测试覆盖率
+coverage/
+
+# 运行产物
+articles/
+outlines/
