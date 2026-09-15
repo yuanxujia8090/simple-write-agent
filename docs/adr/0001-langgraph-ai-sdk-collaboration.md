@@ -13,3 +13,13 @@
 ## 影响
 
 模型节点必须通过统一适配层调用 Vercel AI SDK；LangGraph 节点不得再直接创建另一套模型循环。具体模型兼容性仍需在实现阶段验证。
+
+## 机制细化（2026-09-07，补充而非取代）
+
+落地机制进一步明确，完整设计见 `docs/design/2026-09-05-agent-technical-design.md` §15–17：
+
+1. **工具循环归 AI SDK 驱动**：使用 `generateText({ tools, maxSteps })` / `streamText`，AI SDK 内部完成“模型请求工具 → 执行 → 结果回注 → 再次请求”；**不引入 LangGraph 的 ToolNode**，避免两套循环并存。
+2. **maxSteps（最大工具步数）上限**：单次节点执行默认 3 步，防无界工具调用；与研究预算（跨节点、按轮次）分离计数。
+3. **消息历史随 checkpoint 持久化**：LangGraph State 的 `messages` 字段随 SqliteSaver 落盘；恢复时整段重建 + 上下文组装器补静态部分。
+4. **节点内不 interrupt**：流式生成中途不暂停，`interrupt()` 只在节点边界的门禁点。
+5. **模型节点失败降级**：超时重试 1 次；tool calling 失败降级为纯文本流程（去掉 tools 重跑）。
