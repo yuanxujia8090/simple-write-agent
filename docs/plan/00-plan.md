@@ -28,6 +28,7 @@
 | D9 | 规则层只验证可追溯性 | 事实核查规则层判定缺来源/来源不可验证/硬事实占比异常三类争议信号；见 `docs/adr/0004-fact-checking-boundary.md` |
 | D10 | 拒绝最小回退到父阶段 | 被拒产物回退到其产生阶段，修订指令作为下一轮输入；见 `docs/adr/0005-rejection-rollback-parent-stage.md` |
 | D11 | 工作目录 + 全局状态目录 | 工作目录默认当前目录、`--cwd` 覆盖；状态统一存 `~/.writing-agent/`（session.db/profile.db/materials）；文件产物落工作目录 `articles/`；见 `docs/adr/0006-workspace-artifacts-directory.md` |
+| D12 | 版本化产物与确认原子提交 | 每个可流转阶段先生成 temporary 产物并通过结构契约；确认绑定 `artifactHash` 与 `confirmationHash`；版本、门禁、阶段、Trace、checkpoint 在一个事务内提交；见 `docs/adr/0009-versioned-artifact-gate-commit.md` |
 
 ## 3. 范围
 
@@ -135,7 +136,7 @@ idle → intake → research → thesis → outline → drafting → review → 
 - **快速到草稿**：草稿前阶段应控制在 2–3 次用户确认/输入以内（intake → 论点确认 1 次 → 大纲确认 1 次 → 见稿）；"到稿交互数"纳入 Trace 指标（T6）；
 - **会话内自由反馈**：`/note <内容>` 任意阶段插入，写入会话上下文与 Trace，不阻塞流程、不触发回退；
 - **想法速记**：`/idea add/search/use`，全局 `ideas` 表，跨会话独立；MVP 只做记录、查询、基于想法启动新会话；
-- **内容诊断（软性）**：普通模式 review 附加文字洁癖/表达效率/认知落差三项软性诊断，结果作为建议呈现、不构成硬门禁。
+- **内容诊断（review 内部子阶段）**：普通模式 review 执行文字洁癖、标题与表达效率、认知落差、普通读者理解和 AI 辅助边界诊断；确定性问题应用到新临时版本并记录，不新增独立用户门禁。
 
 ## 6. 实施任务
 
@@ -150,10 +151,10 @@ idle → intake → research → thesis → outline → drafting → review → 
 
 ### 第 2 波：领域模型与持久化
 
-- [ ] **T4 领域状态**：实现 `WritingSession`（含 `workspace` 字段）、阶段流转、`CreativeBrief`、内容门禁/采纳门禁、内容类型、`WriterProfile`（含来源类型：手动/审查反馈/风格提炼；档案版本号 + 动态读取注入）和拒绝/重做规则（最小回退到父阶段、修订指令作为下一轮输入约束）。
-  - 验证：合法/非法阶段转换、普通/快速门禁、素材采纳门禁、简报重新确认、拒绝成果保留、临时成果替换、各门禁回退目标、档案版本号更新测试。
-- [ ] **T5 SQLite 存储**：全局单库 `~/.writing-agent/session.db`（会话、checkpoint、素材、证据（含来源验证状态与争议信号）、产出版本、修订指令、门禁记录和 `ideas` 想法速记表）+ `profile.db`（作者档案）；`materials/<sessionId>/` 素材快照读写；大纲与主稿的**版本状态、确认状态与文件 mtime/hash 指纹**入库，内容以文件为权威；checkpoint 以阶段为原子单位（阶段完成写稳定 checkpoint）；checkpoint 与产出版本独立读写；写入失败事务回滚。
-  - 验证：保存/加载会话、阶段原子 checkpoint 恢复、版本生命周期、门禁记录、素材快照、mtime/hash 指纹记录、ideas 读写、事务回滚测试。
+- [ ] **T4 领域状态与阶段产物契约**：实现 `WritingSession`（含 `workspace` 字段）、阶段流转、`CreativeBrief`、内容门禁/采纳门禁、`ContentType`、`WriterProfile`（含来源类型：手动/审查反馈/风格提炼；档案版本号 + 动态读取注入）、`ArtifactVersion` 版本关系、`StageArtifactContract` 结构契约、`ConfirmationPackage` 决策包和拒绝/重做规则（最小回退到父阶段、修订指令作为下一轮输入约束）。模型只能生成候选和推荐，不能推进阶段。
+  - 验证：合法/非法阶段转换、每阶段必需字段/章节、上游版本关系、普通/快速门禁、素材采纳门禁、推荐批准/修改/拒绝、简报重新确认、拒绝成果保留、临时成果替换、各门禁回退目标、档案版本号更新测试。
+- [ ] **T5 SQLite 存储与原子确认提交**：全局单库 `~/.writing-agent/session.db`（会话、checkpoint、素材、证据（含来源验证状态与争议信号）、产出版本、修订指令、门禁记录、研究计划/候选和内容诊断）+ `profile.db`（作者档案）；`materials/<sessionId>/` 素材快照读写；大纲与主稿的**版本状态、确认状态、产物 hash、确认卡 hash 与文件 mtime**入库，内容以文件为权威；checkpoint 以阶段为原子单位；实现 `StorePort.commitGateDecision()`，在一个事务内提交产物、门禁、阶段、Trace 和 checkpoint，失败全部回滚。
+  - 验证：保存/加载会话、阶段原子 checkpoint 恢复、版本生命周期、门禁指纹失效、原子批准/修改/拒绝、素材快照、mtime/hash 指纹记录、研究候选和内容诊断记录、ideas 读写、事务回滚测试。
 - [ ] **T6 Trace**：记录模型决策、工具调用、工具结果、状态更新、确认请求/响应、事实核查、错误和导出事件；支持按会话回放；从确认与修订事件统计终稿验收率、平均修订轮次、拒绝反馈分类、到稿交互数四项质量指标。
   - 验证：事件顺序、事件关联、SQLite 写入失败、回放和质量指标统计测试。
 
@@ -168,15 +169,15 @@ idle → intake → research → thesis → outline → drafting → review → 
   - 写入类工具（`writeDraft` 等）重写落盘产物前执行外部编辑检测；检测到文件已被外部修改时拒绝写入并返回提示。
   - 素材边界：`--file` 可重复指定；单个素材文件 ≤ 1MB；编码 UTF-8（容忍 BOM）；超限/编码错误给可读提示不崩溃。
   - 验证：文件格式限制、路径错误、工具权限、整批确认、`/read` 直入、争议信号、素材边界、外部编辑检测、搜索失败和参数错误测试。
-- [ ] **T9 SearchProvider**：定义可插拔搜索接口并接入 Tavily（凭据从配置读取；mock 可验收，配置凭据后可用真实搜索）；基础设施失败（超时、凭据错误、非 2xx 响应）连续 2 次后暂停并让用户选择跳过，跳过结果标记为待验证；实现研究预算（普通 2 轮、快速 1 轮，每轮搜索 3 次，计数与结果无关；预算为硬约束，工具执行前检查，优先于 maxSteps）。
-  - 验证：mock 搜索结果、真实凭据路径、超时、连续失败、跳过、凭据错误和研究预算收敛测试。
+- [ ] **T9 SearchProvider 与研究计划**：定义可插拔搜索接口并接入 Tavily（凭据从配置读取；mock 可验收，配置凭据后可用真实搜索）；研究开始前生成 `ResearchPlan`，记录研究问题、子问题、筛选/排除标准；每个候选记录来源类型、抓取时间、保留/淘汰决定和原因；基础设施失败（超时、凭据错误、非 2xx 响应）连续 2 次后暂停并让用户选择跳过，跳过结果标记为待验证；实现研究预算（普通 2 轮、快速 1 轮，每轮搜索 3 次，计数与结果无关；预算为硬约束，工具执行前检查，优先于 maxSteps）。
+  - 验证：mock 搜索结果、研究计划更新、候选去重/保留/淘汰原因、来源时间、真实凭据路径、超时、连续失败、跳过、凭据错误和研究预算收敛测试。
 
 ### 第 4 波：LangGraph 流程
 
-- [ ] **T10 LangGraph 图**：用 `StateGraph` 实现 `intake`、`research`、`thesis`、`outline`、`drafting`、`review`、`export` 节点；质量判断 = 结构门槛（最低完成条件）+ 规则层，内容质量交给人工确认门禁，不引入模型内容自评；`maxRounds` 默认 2，仅兜底流程错误（结构不达标重试）；质量失败（模型输出未满足阶段最低完成条件）走重试或降级，与基础设施失败分开处理；配置 `maxRounds`、连续失败 2 次暂停/确认和显式终止；研究节点按研究预算自动收敛到素材确认。
-  - 验证：话题入口、素材入口、信息不足访谈、研究无外部素材确认、研究预算收敛、3–5 个论点、结构不达标重试、完整 mock 闭环和错误终止。
-- [ ] **T11 人工门禁与恢复**：使用 LangGraph `interrupt/resume`；实现内容门禁与素材采纳门禁；拒绝按最小回退到父阶段（论点→`thesis`、大纲→`outline`、事实报告→`research`、终稿→`drafting`），保存成果、原始反馈与修订指令并作为下一轮输入约束；中断节点重做；`Ctrl+C`（即 SIGINT）保存 checkpoint 回到主界面；实现外部编辑检测门禁（进入 outline 确认前 / drafting 前 / review 前 / 导出前对比 mtime/hash，检测到改动则中断并询问用户）。
-  - 验证：确认、编辑、拒绝回退、误操作恢复、重复执行临时成果替换、外部编辑检测与三选衔接、SIGINT（`Ctrl+C`）保存 checkpoint 退出。
+- [ ] **T10 LangGraph 图**：用 `StateGraph` 实现 `intake`、`research`、`thesis`、`outline`、`drafting`、`review`、`export` 节点；节点只生成候选/推荐和 temporary 产物，由 `StageArtifactValidator` 校验后交给门禁；质量判断 = 结构契约 + 规则层，内容质量交给人工确认门禁，不引入模型内容自评；`maxRounds` 默认 2，仅兜底流程错误（结构不达标重试）；质量失败与基础设施失败分开处理；research 节点按 ResearchPlan 和研究预算自动收敛。
+  - 验证：话题入口、素材入口、信息不足访谈、研究计划、研究无外部素材确认、研究预算收敛、3–5 个论点及推荐、结构契约失败重试、完整 mock 闭环和错误终止。
+- [ ] **T11 人工门禁与恢复**：使用 LangGraph `interrupt/resume`；确认卡默认展示 Agent 推荐、依据、风险和备选项，支持批准推荐/批准备选/修改/拒绝；每次决定绑定 `artifactId`、`artifactHash`、`confirmationHash`；通过 `WorkflowStateService` 原子提交版本、门禁、阶段、Trace 和 checkpoint；拒绝按最小回退到父阶段，保存成果、原始反馈与修订指令；中断节点重做；`Ctrl+C`（即 SIGINT）保存 checkpoint 回到主界面；所有外部编辑、生成新版本、标题或确认卡变化统一触发确认失效。
+  - 验证：推荐批准、备选批准、修改、拒绝回退、过期指纹阻止流转、事务失败回滚、误操作恢复、重复执行临时成果替换、外部编辑检测与三选衔接、SIGINT（`Ctrl+C`）保存 checkpoint 退出。
 
 ### 第 5 波：渲染与交互
 
@@ -189,8 +190,8 @@ idle → intake → research → thesis → outline → drafting → review → 
 
 ### 第 6 波：集成与文档
 
-- [ ] **T15 端到端 mock**：从话题或 `.md` 输入跑通 `intake → research → thesis → outline → drafting → review → exported`；覆盖普通和 `--fast`；从任意目录启动并在工作目录内匹配恢复未完成会话；覆盖大纲/主稿被外部编辑后的检测与衔接、研究预算收敛、`/note` 与 `/idea`。
-  - 验证：终稿、HTML、改写清单、evidence、Trace、checkpoint 均可读；工作目录会话匹配与恢复；外部编辑检测与三选衔接；研究预算收敛；`/note`/`/idea` 生效。
+- [ ] **T15 端到端 mock**：从话题或 `.md` 输入跑通 `intake → research → thesis → outline → drafting → review → exported`；覆盖普通和 `--fast`；从任意目录启动并在工作目录内匹配恢复未完成会话；覆盖阶段结构契约、推荐批准、确认指纹失效、原子确认提交、内容诊断修改链、大纲/主稿被外部编辑后的检测与衔接、研究计划与预算收敛、`/note` 与 `/idea`。
+  - 验证：终稿、HTML、改写清单、evidence、Trace、checkpoint、产物版本和确认指纹均可读；工作目录会话匹配与恢复；确认失效后重新展示确认卡；外部编辑检测与衔接；研究计划/候选筛选记录；内容诊断应用修改；`/note`/`/idea` 生效。
 - [ ] **T16 本地模型烟测**：使用本地 OpenAI-compatible（OpenAI 兼容）接口运行一篇短文；记录模型 tool calling 兼容性和失败行为。
   - 验证：本地模型成功或明确记录阻塞，不把未验证结果写成通过。
 - [ ] **T17 文档同步**：更新 README、架构说明和运行说明，确保与 PRD、计划、ADR 和 `CONTEXT.md` 一致。

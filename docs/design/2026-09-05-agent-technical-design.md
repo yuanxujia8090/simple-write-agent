@@ -23,7 +23,7 @@
 | SQLite 全局单库（session.db + profile.db） | D5 / ADR 0006 |
 | Markdown 主稿 + 确定性 HTML | D6 |
 | Checkpoint 阶段原子；文件是内容权威 | ADR 0006 / ADR 0007 |
-| 外部编辑检测（mtime/hash）、研究预算、门禁分类、最小回退 | ADR 0003–0008 |
+| 外部编辑检测（mtime/hash）、研究预算、门禁分类、最小回退、版本化确认提交 | ADR 0003–0009 |
 
 ### 1.3 明确不做
 
@@ -82,11 +82,11 @@
 |---|---|---|
 | `ModelPort` | 流式文本生成、结构化输出、工具调用 | Vercel AI SDK + 本地 OpenAI-compatible provider |
 | `SearchPort` | `search(query) → SearchResult[]` | Tavily adapter（mock 可验收） |
-| `StorePort` | 会话/版本/门禁/Trace/ideas 读写 | better-sqlite3 单库 adapter |
+| `StorePort` | 会话/版本/门禁/Trace/ideas/研究计划/内容诊断读写，以及原子确认提交 | better-sqlite3 单库 adapter |
 | `CheckpointPort` | LangGraph checkpoint 读写 | `@langchain/langgraph-checkpoint-sqlite`（SqliteSaver） |
 | `FilePort` | 素材/大纲/主稿读写、mtime+hash 指纹 | node:fs adapter |
 | `EventPort` | 向 shell 发布 AgentEvent 流 | 内存事件总线（可换 IPC/WebSocket 供 GUI） |
-| `ContentDiagnosisPort` | 软性内容诊断（后续 feature） | 预留接口 |
+| `ContentDiagnosisPort` | review 内部的内容诊断与确定性修改建议 | MVP 规则/模型组合实现；完整五维诊断仍为后续增强 |
 
 ### 2.3 模块归属（目录）
 
@@ -227,9 +227,31 @@ gates(
 ideas(id TEXT PK, content TEXT, created_at INTEGER, used_at INTEGER)
 
 notes(id TEXT PK, session_id TEXT, content TEXT, created_at INTEGER)
+
+research_plans(
+  id TEXT PK, session_id TEXT, question TEXT, sub_questions_json TEXT,
+  selection_criteria_json TEXT, exclusion_criteria_json TEXT,
+  round INTEGER, status TEXT, created_at INTEGER
+)
+
+research_candidates(
+  id TEXT PK, plan_id TEXT, title TEXT, url TEXT, source_type TEXT,
+  retrieved_at INTEGER, summary TEXT, decision TEXT,
+  decision_reason TEXT, evidence_refs_json TEXT
+)
+
+content_diagnoses(
+  id TEXT PK, session_id TEXT, artifact_version_id TEXT,
+  dimension TEXT, location TEXT, problem TEXT, suggestion TEXT,
+  applied INTEGER, applied_artifact_version_id TEXT
+)
 ```
 
 **指纹设计**：`artifact_versions.content_hash` 存文件内容 hash + 显式记录 mtime。外部编辑检测 = 读取文件 → 算 hash → 与 DB 对比；mtime 仅作快速路径，hash 为权威判定。
+
+**确认提交设计（ADR 0009）**：确认不是单独修改一个门禁字段，而是针对一个具体产出版本提交一个确认决策包。决策包至少包含 `artifactId`、`artifactHash`、`confirmationHash`、Agent 推荐、推荐依据、主要风险和备选项。`WorkflowStateService` 在同一个 SQLite 事务内校验结构契约和指纹，并更新产物状态、门禁记录、会话阶段、Trace 与稳定 checkpoint；任一步失败全部回滚。
+
+**阶段产物契约**：每个可流转阶段由 `StageArtifactContract` 定义必需字段、必需章节、可接受的上游版本和校验规则。模型只能生成候选或推荐，不能直接写入已确认状态或推进阶段。
 
 ### 4.3 checkpoint 阶段原子（ADR 0007）
 
@@ -260,10 +282,11 @@ sequenceDiagram
         U->>T: 回答固定问题
         T->>G: resume(简报草稿)
     end
-    G->>M: 生成论点候选(3-5)
-    G->>T: interrupt-request(论点确认)
-    U->>T: 选一个
-    T->>G: resume(选中的论点)
+    G->>M: 生成论点候选(3-5) + 推荐、依据、风险
+    G->>T: interrupt-request(确认决策包)
+    U->>T: 批准推荐 / 选择备选 / 修改 / 拒绝
+    T->>G: resume(带 artifactHash + confirmationHash 的决定)
+    G->>S: 原子提交产物、门禁、阶段、Trace、checkpoint
     G->>M: 生成大纲 → 落盘 outlines/
     G->>T: interrupt-request(大纲确认)
     U->>T: 确认
@@ -281,16 +304,22 @@ sequenceDiagram
     participant T as TUI
     participant U as 用户
 
-    G->>R: 节点产出候选内容
-    R->>T: interrupt-request(论点确认, payload=候选)
-    T->>U: 渲染确认卡
-    U->>T: 拒绝 + 修订指令
-    T->>R: resume - reject + revision
-    R->>G: Command(resume=revision)
-    G->>R: 最小回退到 thesis 节点，revision 作为下一轮输入
+    G->>R: 节点产出 temporary 版本 + 结构校验结果
+    R->>T: interrupt-request(确认决策包, payload=推荐/依据/风险/备选)
+    T->>U: 默认提供“批准推荐”，也支持修改或拒绝
+    U->>T: 决定 + artifactHash + confirmationHash
+    T->>R: resume(decision)
+    R->>G: WorkflowStateService 原子提交
+    alt 批准
+        G->>G: 更新版本为 draft，推进 nextStage，写 Trace/checkpoint
+    else 拒绝或修改
+        G->>G: 保留 rejected 版本，保存反馈和修订指令，最小回退
+    end
 ```
 
-### 5.3 外部编辑检测
+### 5.3 外部编辑与确认失效
+
+外部编辑只是确认失效的一种情况。以下事件统一使当前确认失效：文件内容变化、Agent 生成新版本、用户修改标题或已选论点、确认卡内容变化、拒绝回退产生新上下文。所有门禁恢复前都重新验证 `artifactHash` 和 `confirmationHash`，失败时重新生成确认卡，不静默继续。
 
 ```mermaid
 sequenceDiagram
@@ -464,8 +493,31 @@ const VALID_TRANSITIONS: Record<Stage, Stage[]> = {
 type ArtifactStatus = 'draft'|'rejected'|'temporary';
 interface ArtifactVersion {
   id: string; sessionId: string; stage: Stage;
-  status: ArtifactStatus; filePath: string; contentHash: string;
+  artifactType: 'brief'|'material-set'|'thesis'|'outline'|'draft'|'review'|'export';
+  version: number;
+  status: ArtifactStatus; filePath?: string; contentHash: string;
   confirmedAt?: number;
+}
+
+interface StageArtifactContract {
+  stage: Stage;
+  requiredFields: string[];
+  requiredSections: string[];
+  validate(artifact: unknown): ValidationResult;
+}
+
+interface ConfirmationPackage {
+  gateId: string; sessionId: string; stage: Stage;
+  artifactId: string; artifactHash: string; confirmationHash: string;
+  recommendation: string; rationale: string[];
+  risks: string[]; alternatives: string[];
+}
+
+interface GateDecision {
+  packageId: string;
+  decision: 'approve-recommendation'|'approve-alternative'|'revise'|'reject';
+  feedback?: string;
+  selectedValue?: unknown;
 }
 
 // ports：能力接口（实现全在 adapters）
@@ -473,6 +525,12 @@ interface StorePort {
   createSession(input): Promise<Session>;
   saveVersion(v: ArtifactVersion): Promise<void>;
   readLatestVersion(sessionId: string, stage: Stage): Promise<ArtifactVersion|null>;
+  commitGateDecision(input: {
+    pkg: ConfirmationPackage;
+    decision: GateDecision;
+    nextStage: Stage;
+    events: AgentEvent[];
+  }): Promise<void>; // 单事务：版本、门禁、阶段、Trace、checkpoint
   saveTrace(events: AgentEvent[]): Promise<void>;   // 批量
   recordFingerprint(sessionId: string, stage: Stage, hash: string): Promise<void>;
 }
@@ -542,6 +600,8 @@ interface FilePort {
 | 素材 / 证据 / 门禁记录 | 工具与 adapter（经 StorePort） | 上下文组装、事实核查 | 素材快照在 `materials/<sessionId>/` |
 | 页面 / 键盘 UI 状态 | TUI 组件内部 | 仅 TUI | 不入库、不进 Trace |
 | AgentEvent 流 | GraphRunner / 节点 publish | TUI 展示 + Trace 落库 | 事件是“广播”，落库是“记账”，两方都只读 |
+| 阶段产物候选 / 推荐 | 模型节点 | 校验器、TUI、WorkflowStateService | 模型不得直接写确认状态或推进阶段 |
+| 确认提交与阶段推进 | WorkflowStateService / StorePort | Agent、TUI、Trace | 必须绑定产物指纹并在同一事务内完成 |
 
 ---
 
@@ -664,7 +724,7 @@ main() → 解析参数 → 读配置（env + config.json 校验）→ 解析工
 | **GUI 桌面/网页** | shell 层 + EventPort | 保留 agent/domain/adapters，新写 GUI shell，EventPort 换 IPC/WebSocket |
 | **多平台（小红书等）** | 导出 adapter | 增加 ExportPort 实现；agent 增加平台分支节点 |
 | **新搜索/模型** | SearchPort / ModelPort | 新增 adapter，配置切换 |
-| **内容诊断完整版** | ContentDiagnosisPort | 实现五维诊断 adapter，接入 review |
+| **内容诊断完整版** | ContentDiagnosisPort | 在 MVP 五项轻量诊断基础上扩展更完整的诊断 adapter |
 | **作者档案自动记忆** | Trace 回放 | 离线脚本聚合 Trace → 提炼 profile_entries（质量指标为输入） |
 | **会话删除/主题编辑器** | StorePort / 主题配置 | 新增命令 + 校验逻辑 |
 
@@ -709,7 +769,8 @@ main() → 解析参数 → 读配置（env + config.json 校验）→ 解析工
 
 | 预算 | 作用域 | 默认值 | 防什么 |
 |---|---|---|---|
-| 研究预算（research budget） | 跨节点、按轮次 | 普通 2 轮 / 快速 1 轮，**每轮搜索 3 次**（2026-09-07 决定：计数与结果无关，调一次算一次，不论是否有结果返回） | 防“研究太多” |
+| 研究预算（research budget） | 跨节点、按轮次 | 普通 2 轮 / 快速 1 轮，**每轮搜索 3 次**（计数与结果无关，调一次算一次） | 防“研究太多” |
+| 研究计划（research plan） | 跨轮次 | 研究问题、子问题、筛选标准、排除标准；每个候选记录来源类型、抓取时间和保留/淘汰原因 | 防“无目标扩展候选” |
 | 节点内工具步数（maxSteps） | 单次节点执行 | 3 | 防“单次调用死循环” |
 
 两层预算独立计数，互不顶替。**搜索预算为硬约束**：工具执行器在每次 `searchWeb` 调用前检查本轮已用次数，达上限即拒绝新调用并返回“预算耗尽”信号；`maxSteps`（同为 3）仅兜底防模型陷入其他工具循环，实际搜索步数以预算为准——预算计数独立实现，不依赖 maxSteps 的语义（两者数字一致是刻意对齐，防止未来单独调整 maxSteps 时预算语义漂移）。
@@ -735,7 +796,7 @@ main() → 解析参数 → 读配置（env + config.json 校验）→ 解析工
 | 节点 | 模型模式 | 模型可自主调用工具 | maxSteps | 说明 |
 |---|---|---|---|---|
 | intake | `generateText` | `listInterviewQuestions` | — | 信息检查 + 访谈提问；访谈回答由用户输入，不构成工具循环 |
-| research | `streamText` | `searchWeb`、`readWeb`、`readMaterials` | 3 | 搜索次数受研究预算硬约束（每轮 3 次，§15.3） |
+| research | `streamText` | `searchWeb`、`readWeb`、`readMaterials` | 3 | 先生成或更新 ResearchPlan；每轮结果记录来源类型、抓取时间和保留/淘汰原因；搜索次数受研究预算硬约束（每轮 3 次，§15.3） |
 | thesis | `generateObject` | — | — | 素材已在上下文（§16.2），产出 3–5 个候选（核心主张 + 论证思路） |
 | outline | `generateObject` | — | — | 标题 + 章节 + 每章写作目标 |
 | drafting | `streamText` | — | — | 长文流式生成；`writeDraft` 由节点代码在生成完成后经 FilePort 写盘 |
@@ -782,14 +843,17 @@ main() → 解析参数 → 读配置（env + config.json 校验）→ 解析工
 - **MVP 不做摘要、不做检索**（向量库明确不在 MVP，见 §1.3）；
 - 落盘产物（大纲、草稿）**不进上下文**，节点按需读取（如 drafting 参考大纲时只读大纲文件对应章节），避免重复注入大文本。
 
-### 16.4 文件与消息的一致性规则（2026-09-07 补）
+### 16.4 文件、产物版本与消息的一致性规则（2026-09-07 补，2026-09-28 增强）
 
 解决“checkpoint 里的旧产物消息 vs 文件新内容”双写冲突，统一采用一套**消息失效**机制：
 
 1. **文件是内容权威**：落盘产物（大纲、草稿）被外部编辑且用户确认采用后，该阶段产物对应的消息段标记为**失效**（invalidated），上下文组装（§16.2 第 7 层）跳过失效消息，以文件内容为准；失效标记保留在 checkpoint 中供 Trace 回放，不删除。
 2. **回退时下游消息失效**：门禁拒绝触发最小回退时（如终稿被拒 → drafting），被拒阶段及下游产出的消息段一并标记失效，避免下一轮生成被“自己上一轮的失败产物”污染；修订指令（RevisionInstruction）作为新输入约束注入（ADR 0005）。
 3. **结构化产物确认后写入消息**：`generateObject` 产出的候选（如论点 3–5 个）本身不在对话消息里；经门禁确认后，把“选中项 + 确认/拒绝决定”转写为一条**确认记录消息**写入 messages，形成可追溯的决策链，也使 checkpoint 能完整重放“用户做了什么决定、为什么”。
-4. 以上三条统一由 `agent/` 内的**消息失效管理器**（message invalidator）实现，随上下文组装器一起单测。
+4. 阶段产物的结构校验由 `StageArtifactValidator` 统一执行：必需字段、必需章节、上游版本关系和内容指纹任一不满足，都不得进入确认或下游阶段。
+5. 确认提交由 `WorkflowStateService` 统一执行：重新读取产物并计算指纹，确认指纹有效后，在一个 SQLite 事务内更新 ArtifactVersion、Gate、Session.stage、Trace 和 checkpoint。失败全部回滚，禁止 TUI 或模型节点分别写这些状态。
+6. 内容诊断属于 `review` 内部子阶段。诊断项记录位置、问题、建议、是否应用和应用后的产物版本；事实核查和终稿确认只针对应用修改后的最新版本。
+7. 以上规则统一由 `agent/` 内的消息失效管理器、`StageArtifactValidator` 和 `WorkflowStateService` 实现，并分别单测。
 
 ---
 
@@ -846,4 +910,6 @@ sequenceDiagram
 
 ## 18. 结论
 
-架构以 **GraphRunner + EventPort** 为枢纽：领域层纯逻辑、adapters 可替换、shell 可换 GUI、事件即 Trace。本地模型生成为唯一显著瓶颈，已通过流式、研究预算、`--fast`、结构门槛四重手段控制到稿时间。模型节点执行模型（§15）、上下文与记忆（§16）、LangGraph/AI SDK 协作（§17）明确了“模型怎么干活”的执行细节。此方案满足 MVP 全部验收标准，并为 GUI 封装与作者记忆等后续 feature 预留了明确接缝。
+架构以 **GraphRunner + EventPort** 为枢纽：领域层纯逻辑、adapters 可替换、shell 可换 GUI、事件即 Trace。本地模型生成为唯一显著瓶颈，已通过流式、研究预算、`--fast`、结构门槛四重手段控制到稿时间。
+
+2026-09-28 增强后，流程状态不再只依赖阶段字段：每个阶段先形成带结构契约的 temporary 产物，用户确认绑定具体版本和双重指纹，WorkflowStateService 在单事务内提交版本、门禁、阶段、Trace 和 checkpoint；Agent 推荐代替用户独立比较候选，review 内部完成内容诊断和确定性修改，研究结果保留计划与筛选依据。模型节点执行模型（§15）、上下文与记忆（§16）、LangGraph/AI SDK 协作（§17）与版本化确认机制共同构成可恢复、可解释的 MVP 闭环。

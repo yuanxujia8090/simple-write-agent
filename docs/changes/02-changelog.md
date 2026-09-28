@@ -4,6 +4,17 @@
 
 ---
 
+## 2026-09-28
+
+### 版本化产物、确认决策与阶段推进协议
+
+- 新增 `docs/adr/0009-versioned-artifact-gate-commit.md`：确认绑定具体产出版本、产物指纹和确认卡指纹；结构校验、门禁、阶段、Trace 与 checkpoint 通过统一入口原子提交。
+- 更新技术设计：增加 `StageArtifactContract`、`ConfirmationPackage`、`WorkflowStateService`、研究计划/候选记录、review 内部内容诊断子阶段，以及统一确认失效规则。
+- 更新 PRD：确认卡改为 Agent 推荐批准式交互；阶段产物先形成 temporary 版本并通过结构契约；研究候选保留筛选依据；新增版本指纹、事务回滚和 review 修改链验收条件。
+- 更新实施计划：增加 D12，并将 T4、T5、T9、T10、T11、T15 的验证范围扩展到结构契约、确认失效、原子提交、研究计划和内容诊断。
+- 更新 `CONTEXT.md`：补充 `StageArtifactContract`、`ConfirmationPackage`、`ResearchPlan` 术语。
+- 本轮只修改方案文档，未修改代码；未运行代码测试，验证采用文档交叉检查。
+
 ## 2026-09-07
 
 ### 技术方案补齐：模型执行、上下文记忆与模块协作契约
