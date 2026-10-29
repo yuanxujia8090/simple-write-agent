@@ -2,7 +2,7 @@
  * 统一的应用错误：给用户看的可读错误。
  * 不携带密钥；message 可以直接打印。
  */
-export type AppErrorCode = "USAGE" | "CONFIG" | "WORKSPACE" | "LOCK" | "RUNTIME";
+export type AppErrorCode = "USAGE" | "CONFIG" | "WORKSPACE" | "LOCK" | "VALIDATION" | "RUNTIME";
 
 export class AppError extends Error {
   readonly code: AppErrorCode;
