@@ -16,7 +16,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "exp:t0": "tsx experiments/t0/run.ts"
+    "exp:t0": "tsx experiments/t0/run.ts",
+    "replay": "tsx src/cli/replay-main.ts"
   },
   "dependencies": {
     "@langchain/langgraph": "1.5.3",
