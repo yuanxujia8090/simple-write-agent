@@ -1,0 +1,29 @@
+/** 命令行帮助文本。中文为主，保留命令与参数原名。 */
+export function helpText(): string {
+  return [
+    "写作 Agent（writing-agent）—— 本地运行的公众号长文写作助手",
+    "",
+    "用法：",
+    "  writing-agent [选项]",
+    "",
+    "不带参数启动后进入欢迎页（新建 / 恢复 / 退出）。",
+    "",
+    "选项：",
+    "  --topic <主题>        以话题开始新会话",
+    "  --file <路径>         附带 .txt / .md 素材，可重复指定",
+    "  --theme <路径>        指定主题 JSON",
+    "  --cwd <路径>          指定工作目录；默认从当前目录向上查找 .writing-agent 标记",
+    "  --output-dir <路径>   指定导出目录（绝对路径直接用，否则相对工作目录）",
+    "  --fast                快速模式：只保留论点和终稿两个确认点",
+    "  --debug               输出调试日志",
+    "  -h, --help            显示本帮助",
+    "  -v, --version         显示版本",
+    "",
+    "示例：",
+    '  writing-agent --topic "跨端状态同步为什么总翻车"',
+    "  writing-agent --file ./notes.md --fast",
+    "  writing-agent --cwd ~/writing/my-article",
+    "",
+    "说明：本版本只完成启动骨架、配置读取和工作目录解析；交互界面将在下一阶段接入。",
+  ].join("\n");
+}
