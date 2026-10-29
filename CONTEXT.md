@@ -83,7 +83,7 @@ _避免_：CreativeBrief（单篇简报）、GlobalTheme（样式配置）
 
 ## 运行与存储
 
-**WorkingDirectory（工作目录）**：会话与文件产物的默认根，默认等于启动 `writing-agent` 时的当前目录，可用 `--cwd <路径>` 覆盖；会话记录创建时的 `workspace` 绝对路径。
+**WorkingDirectory（工作目录）**：会话与文件产物的默认根，依次按 `--cwd <路径>`、向上找到的最近目录标记、当前启动目录解析；会话记录 `workspace` 绝对路径与 `workspaceId` 目录身份，后者用于目录搬移后关联原会话。
 _避免_：全局状态目录（`~/.writing-agent/`，两者解耦）
 
 **GlobalStateDirectory（全局状态目录）**：`~/.writing-agent/`，统一存放配置、作者档案（`profile.db`）、会话状态库（`session.db`）和素材快照（`materials/<sessionId>/`），与工作目录解耦，不随目录搬移失效。

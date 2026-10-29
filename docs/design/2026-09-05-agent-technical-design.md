@@ -1,10 +1,13 @@
 # 写作 Agent 技术设计方案
 
 - 日期：2026-09-05（2026-09-07 增补：模型节点执行模型、上下文与记忆、LangGraph/AI SDK 协作机制、模块协作契约，见 §7.4、§15–17）
-- 状态：评审中
+- 状态：总体方向沿用；暂停重放、检查点提交、接口版本与恢复细节待实验验证
 - 关联需求：`docs/wiki/01-prd-writing-agent.md`
 - 关联计划：`docs/plan/00-plan.md`
-- 关联决策：`docs/adr/0001`–`0008`（协作机制细化见 ADR 0001 追加小节）
+- 关联决策：`docs/adr/0001`–`0009`；实施与学习顺序见 [0011](../adr/0011-implementation-first-learning-after.md)
+- 当前入口：[文档导航](../README.md)；开发前核对与待验证项见 [2026-10-29 开发准备审查](2026-10-29-development-readiness-review.md)
+
+> 本文是总体设计，不是已运行代码或当前依赖接口证明。各阶段开工时细化方案，关键取舍写独立决策，实际结果写变更记录。历史接口示例须在锁定依赖版本后核对；学习证明不作为开工或阶段放行条件。
 
 ## 1. 目标与约束
 
@@ -86,7 +89,7 @@
 | `CheckpointPort` | LangGraph checkpoint 读写 | `@langchain/langgraph-checkpoint-sqlite`（SqliteSaver） |
 | `FilePort` | 素材/大纲/主稿读写、mtime+hash 指纹 | node:fs adapter |
 | `EventPort` | 向 shell 发布 AgentEvent 流 | 内存事件总线（可换 IPC/WebSocket 供 GUI） |
-| `ContentDiagnosisPort` | review 内部的内容诊断与确定性修改建议 | MVP 规则/模型组合实现；完整五维诊断仍为后续增强 |
+| `ContentDiagnosisPort` | review 内部的内容诊断与确定性修改建议 | 五项轻量检查按需求 §3.6.3 实现；独立可插拔诊断提供方后置，不为预留接口增加实现 |
 
 ### 2.3 模块归属（目录）
 
@@ -175,8 +178,8 @@ type AgentEvent =
 ~/.writing-agent/
 ├── config.json
 ├── profile.db              # 作者档案
-└── session.db              # 会话数据 + LangGraph checkpoint + Trace + ideas
-    └── materials/<sessionId>/   # 素材快照
+├── session.db              # 会话数据 + LangGraph checkpoint + Trace + ideas
+└── materials/<sessionId>/  # 素材快照，与数据库文件同级
 
 <工作目录>/
 ├── .writing-agent/workspace.json
@@ -185,6 +188,8 @@ type AgentEvent =
 ```
 
 ### 4.2 session.db 表设计
+
+> 下表是历史结构草图，不作为建表脚本直接执行。T0 实验与持久化阶段方案必须补齐：会话目录身份 `workspaceId`、结构化产物内容/引用与上游版本关系、产物版本号与文件 mtime、门禁产物/确认卡指纹、档案版本号，以及已接受决策所需的字段。检查点表结构以锁定依赖的实际接口为准，不能照抄草图覆盖保存器自有表。
 
 ```sql
 sessions(
@@ -249,6 +254,8 @@ content_diagnoses(
 
 **指纹设计**：`artifact_versions.content_hash` 存文件内容 hash + 显式记录 mtime。外部编辑检测 = 读取文件 → 算 hash → 与 DB 对比；mtime 仅作快速路径，hash 为权威判定。
 
+**实现前提（T0）**：业务库和检查点保存器使用同一个数据库文件，并不自动满足同一事务。必须用实际依赖验证共同提交与故障恢复；验证前不将现成 `SqliteSaver` 直接透传当作原子性证明。文件写入不在数据库事务内，版本关联与恢复对账方案也须在持久化阶段给出证据。
+
 **确认提交设计（ADR 0009）**：确认不是单独修改一个门禁字段，而是针对一个具体产出版本提交一个确认决策包。决策包至少包含 `artifactId`、`artifactHash`、`confirmationHash`、Agent 推荐、推荐依据、主要风险和备选项。`WorkflowStateService` 在同一个 SQLite 事务内校验结构契约和指纹，并更新产物状态、门禁记录、会话阶段、Trace 与稳定 checkpoint；任一步失败全部回滚。
 
 **阶段产物契约**：每个可流转阶段由 `StageArtifactContract` 定义必需字段、必需章节、可接受的上游版本和校验规则。模型只能生成候选或推荐，不能直接写入已确认状态或推进阶段。
@@ -264,6 +271,8 @@ content_diagnoses(
 ## 5. 关键时序
 
 ### 5.1 主流程：启动 → 首版草稿
+
+> 下图聚焦确认交互，研究段未展开；实际必须依次经过 intake → research → thesis，不能据此跳过有界研究与素材采纳。完整输入输出以需求 §3.2–3.4 和阶段方案为准。
 
 ```mermaid
 sequenceDiagram
@@ -538,6 +547,7 @@ interface EventPort {
   publish(ev: AgentEvent): void;
   subscribe(fn: (ev: AgentEvent) => void): () => void;
 }
+```
 
 ```ts
 // ports：模型能力（实现 = Vercel AI SDK 适配器，见 §16/§18）
@@ -581,11 +591,11 @@ interface FilePort {
 }
 ```
 
-> `CheckpointPort` 由 `@langchain/langgraph-checkpoint-sqlite` 的 `SqliteSaver` 直接提供，GraphRunner 透传使用，不额外包一层。模型消息历史随 checkpoint 的 `messages` 字段持久化（见 §17.3）。
+> `CheckpointPort` 的候选实现是 `@langchain/langgraph-checkpoint-sqlite` 的 `SqliteSaver`；是否直接使用取决于 T0 对共同提交与恢复边界的实测，不预先承诺“无需适配”。模型消息历史随 checkpoint 的 `messages` 字段持久化（见 §17.3）。
 
 ### 7.3 依赖注入与组合根
 
-- 端口接口在 `domain/ports` 声明，实现通过构造函数注入；
+- 端口接口在 `src/ports/` 声明，实现通过构造函数注入；
 - 唯一组装点 `cli/bootstrap.ts`：读配置 → 构造 adapters → 组装 GraphRunner → 挂接 EventPort → 启动 TUI；
 - 测试通过替换 fake adapter 实现，不碰真实 IO。
 
@@ -595,9 +605,9 @@ interface FilePort {
 
 | 状态 | 唯一写入者 | 谁读取 | 说明 |
 |---|---|---|---|
-| 会话阶段 / 模式（Stage、mode） | agent 节点（经 StorePort） | TUI、节点、欢迎页 | 权威在 `session.db` |
+| 会话阶段 / 模式（Stage、mode） | WorkflowStateService（经 StorePort） | TUI、节点、欢迎页 | 权威在 `session.db`；节点只提交候选/决定，不分别推进状态 |
 | 模型消息历史（messages） | agent 节点写 checkpoint | ModelPort 组装上下文（§16） | 随 checkpoint 持久化，恢复时整段重建 |
-| 素材 / 证据 / 门禁记录 | 工具与 adapter（经 StorePort） | 上下文组装、事实核查 | 素材快照在 `materials/<sessionId>/` |
+| 素材 / 证据 | 受权限控制的工具与应用服务（经 StorePort） | 上下文组装、事实核查 | 素材快照在 `materials/<sessionId>/`；确认记录由下方统一提交入口写入 |
 | 页面 / 键盘 UI 状态 | TUI 组件内部 | 仅 TUI | 不入库、不进 Trace |
 | AgentEvent 流 | GraphRunner / 节点 publish | TUI 展示 + Trace 落库 | 事件是“广播”，落库是“记账”，两方都只读 |
 | 阶段产物候选 / 推荐 | 模型节点 | 校验器、TUI、WorkflowStateService | 模型不得直接写确认状态或推进阶段 |
@@ -733,6 +743,8 @@ main() → 解析参数 → 读配置（env + config.json 校验）→ 解析工
 ---
 
 ## 14. 风险与开放问题
+
+2026-10-29 核对：以下风险表需与 [开发准备审查](2026-10-29-development-readiness-review.md) 一起读取。尤其是 §4.3/§5.4 的暂停与取消语义、§8.2/§15.4 的基础设施失败与质量重试混用、§15.6/§16.3 的稿件读取方式、历史模型接口写法和单实例锁/备份方案，尚需在相应阶段实验并收敛；不得把设计描述当作已验证实现。
 
 | 风险 | 影响 | 缓解 |
 |---|---|---|
