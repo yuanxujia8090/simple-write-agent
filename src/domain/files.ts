@@ -29,6 +29,11 @@ export type ExportMarkdownInput = {
   slug?: string;
   /** 绝对路径直接使用；相对路径按工作目录解析。 */
   outputDir?: string;
+  /**
+   * 允许覆盖的路径：本会话自己的主稿文件。
+   * 导出终稿时替换这份主稿（内容以终稿为准），其他既有文件仍然不覆盖。
+   */
+  replacePath?: string;
 };
 
 export interface FileWriter {
