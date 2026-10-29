@@ -6,6 +6,14 @@
 
 ## 2026-10-29
 
+### 首条写作闭环（固定模型结果）
+
+- 新增领域层：阶段、7 种产物、两类门禁、版本状态、确认决策包、修订指令与阶段契约校验。
+- 新增内存工作流服务与 LangGraph 编排图：5 道门禁（素材采纳 + 论点/大纲/事实报告/终稿），确认提交带指纹校验、幂等与失败全量回滚；修改和拒绝按 PRD 回退重做。
+- 新增大纲/主稿/导出文件的原子写入与内容指纹；导出终稿替换本会话自己的主稿，不再另存副本。
+- 新增 `npm run replay -- --scenario basic|revise|reject`：三条路径都到 `exported`；全量 169 个测试通过。阶段记录见 [首条写作闭环方案](../design/2026-10-29-first-writing-loop.md) 与 [变更记录](2026-10-29-first-writing-loop.md)。
+- 主计划 T4/T6/T10/T11/T12/T14/T15 记录实际进度但不勾选（持久化、HTML、交互与快速模式未完成）。
+
 ### 启动阶段：脚手架、配置层与暂停恢复实验
 
 - 新增可运行的最小程序：`writing-agent --help`、类型检查、测试、构建；依赖锁定 `@langchain/langgraph@1.5.3`、`@langchain/langgraph-checkpoint-sqlite@1.1.0`、`better-sqlite3@12.10.0`、`typescript@7.0.2`、`vitest@5.0.5`。
