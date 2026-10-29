@@ -1,17 +1,19 @@
 # 开发前阅读入口
 
 - 更新：2026-10-29
-- 当前阶段：开发准备；工程任务待执行。
+- 当前阶段：启动与关键机制验证已完成；下一阶段为首条写作闭环。
 - 协作顺序：先实现 → 分阶段记录方案、决策与验证 → 实现后回看学习。
 
 ## 先读这四处
 
 1. [需求](wiki/01-prd-writing-agent.md)：用户要什么、包含和排除哪些功能、如何验收。开工先读 §1、当前任务涉及的流程节和 §6。
 2. [当前决策](#有效决策索引)：已确定的约束，避免用研究建议替换已接受决策。
-3. [总体技术方案](design/2026-09-05-agent-technical-design.md)：模块与数据如何协作；状态是“总体方向沿用，关键机制待实测”，不能照抄历史接口直接当实现。
+3. [总体技术方案](design/2026-09-05-agent-technical-design.md)：模块与数据如何协作；状态是“总体方向沿用，暂停恢复与共同提交已实测（见 ADR 0012）”，其余接口仍以实际版本核对。
 4. [实施计划](plan/00-plan.md)：§1.3 是实际执行顺序；§6 是功能任务清单；§7–8 是验证与交付要求。
 
-本次核对结论、矛盾及落地时点集中在 [开发准备审查](design/2026-10-29-development-readiness-review.md)。给编程 Agent 的下一阶段执行范围与验收要求见 [实施交接](plan/2026-10-29-implementation-handoff.md)。术语不清楚时查根目录 [CONTEXT.md](../CONTEXT.md)。
+给编程 Agent 的执行范围见 [实施交接](plan/2026-10-29-implementation-handoff.md)，实际结果见 [启动与关键机制验证方案](design/2026-10-29-bootstrap-checkpoint-experiments.md) 与 [变更记录](changes/2026-10-29-bootstrap-checkpoint.md)。
+
+开发准备阶段的结论、矛盾及落地时点集中在 [开发准备审查](design/2026-10-29-development-readiness-review.md)。术语不清楚时查根目录 [CONTEXT.md](../CONTEXT.md)。
 
 ## 当前结论
 
@@ -19,7 +21,8 @@
 - 技术方向：TypeScript（带类型检查的 JavaScript）、LangGraph.js（管理阶段、暂停和恢复）、Vercel AI SDK（统一模型调用工具库）、Ink（用 React 写终端界面）、SQLite（本地数据库）。具体依赖版本在开工时锁定并验证。
 - 内容权威：落盘的大纲和主稿文件；数据库保存版本状态、确认与指纹，不能被历史“结构化状态唯一真源”的研究建议替换。
 - 工程要求：普通/快速确认、素材采纳、版本保留、恢复、事实来源、权限与导出规则仍有效。解除学习前置条件不降低软件验证要求。
-- 下一步：脚手架与最小配置 → 暂停重放、提交一致性小实验 → 首条写作闭环。详细阶段范围看实施计划 §1.3。
+- 已实测（2026-10-29）：`interrupt()` 能把生成与确认拆成两次运行，恢复拿回同一候选；重复确认可幂等；`SqliteSaver.put()` 是异步的，无法嵌入同步 SQLite 事务，共同提交改为事务外预序列化 + 事务内直写（ADR 0012）。
+- 下一步：首条写作闭环（固定模型结果跑通素材到 Markdown 导出）。详细阶段范围看实施计划 §1.3。
 
 ## 有效决策索引
 
@@ -37,6 +40,7 @@ ADR（Architecture Decision Record，架构决策记录）像项目里的“选�
 | [0008：预算与交互效率](adr/0008-efficiency-feedback-content-diagnosis.md) | 有界研究、自由反馈、想法速记；内容诊断细节按 0009 与当前需求 |
 | [0009：版本化确认与原子提交](adr/0009-versioned-artifact-gate-commit.md) | 确认绑定内容指纹，业务状态与稳定检查点共同提交；具体保存器须实验验证 |
 | [0011：先实现、实现后学习](adr/0011-implementation-first-learning-after.md) | 当前工作方式；阶段记录必须，学习证明后置 |
+| [0012：checkpoint 与业务状态共同提交](adr/0012-checkpoint-business-shared-transaction.md) | 确认提交不用 `saver.put()`，改为事务外预序列化 + 同事务直写 checkpoint |
 
 [0010：学习证明纳入阶段验收](adr/0010-learning-first-incremental-validation.md) 已被 0011 取代，保留历史，不再作为开发前置条件或软件阶段放行条件。
 

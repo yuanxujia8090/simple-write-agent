@@ -1,7 +1,7 @@
 # 阶段方案：最小脚手架、配置层与暂停恢复实验
 
 - 日期：2026-10-29
-- 状态：进行中（开工前建立，结束时补实际结果）
+- 状态：已完成（2026-10-29）
 - 关联需求：[写作 Agent MVP 需求](../wiki/01-prd-writing-agent.md) §2.1、§4.4、§4.7、§5.1–5.3、§6
 - 关联决策：[0006 工作目录与全局状态目录](../adr/0006-workspace-artifacts-directory.md)、[0007 MVP 边界](../adr/0007-mvp-boundaries-and-quality-gate.md)、[0009 版本化产物与确认原子提交](../adr/0009-versioned-artifact-gate-commit.md)、[0011 先实现、阶段留证、完成后学习](../adr/0011-implementation-first-learning-after.md)
 - 执行交接：[实施交接](../plan/2026-10-29-implementation-handoff.md)
@@ -33,17 +33,18 @@
 
 ### 3.1 工具链（本阶段锁定）
 
-| 用途 | 选择 | 理由 |
-| --- | --- | --- |
-| 运行时 | Node.js 22 ESM | 单进程，原生 ESM，无打包层 |
-| 语言/类型 | TypeScript（`tsc --noEmit` 类型检查） | 与决策 D1 一致 |
-| 开发运行 | `tsx` | 直接跑 `.ts`，开发期不产生产物 |
-| 测试 | Vitest | 快、内置 TS 支持、无额外断言库 |
-| 参数解析 | `node:util` 的 `parseArgs` | 需求参数少，标准库够用，少一个依赖 |
-| 配置校验 | `zod` | 运行时可读错误信息，后续工具输入校验同款 |
-| 编排/持久化实验 | `@langchain/langgraph` + `@langchain/langgraph-checkpoint-sqlite` + `better-sqlite3` | 决策 D2/D5；版本以 `package.json` 实际锁定值为准 |
-
-具体版本在实现时写入 `package.json`，并在变更记录里抄写实际安装版本。
+| 用途 | 选择 | 实际锁定版本 | 理由 |
+| --- | --- | --- | --- |
+| 运行时 | Node.js ESM | 22.22.2（`engines: >=22`） | 单进程，原生 ESM，无打包层 |
+| 语言/类型 | TypeScript（`tsc --noEmit` 类型检查） | 7.0.2 | 与决策 D1 一致 |
+| 开发运行 | `tsx` | 4.23.15 | 直接跑 `.ts`，开发期不产生产物 |
+| 测试 | Vitest | 5.0.5 | 快、内置 TS 支持、无额外断言库 |
+| 参数解析 | `node:util` 的 `parseArgs` | 随 Node | 需求参数少，标准库够用，少一个依赖 |
+| 配置校验 | `zod` | 4.6.7 | 运行时可读错误信息，后续工具输入校验同款 |
+| 编排 | `@langchain/langgraph` | 1.5.3 | 决策 D2 |
+| checkpoint 保存器 | `@langchain/langgraph-checkpoint-sqlite` | 1.1.0 | 决策 D5 |
+| SQLite 驱动 | `better-sqlite3` | 12.10.0 | 同步事务语义明确，便于验证共同提交 |
+| 类型声明 | `@types/node`、`@types/better-sqlite3` | 22.18.11、7.6.13 | 仅开发期 |
 
 ### 3.2 目录与模块边界
 
@@ -136,4 +137,30 @@ S2、S3、S4 写不同目录，可在 S1 之后并行；共享的 `package.json`
 
 ## 6. 实际结果
 
-（实现后回填：依赖版本、实验预期/实际、结论、未验证项。）
+### 6.1 已交付
+
+| 任务 | 结果 | 证据 |
+| --- | --- | --- |
+| S1 脚手架 | `npm run typecheck`、`npm test`、`npm run dev -- --help`、`npm run build` + `node dist/cli.js --help` 均可用 | 见变更记录命令输出 |
+| S2 配置层 | 文件 + 环境变量 + 默认值三级合并，损坏文件与非法 URL 抛可读错误，凭据缺失给警告且不回显密钥 | 17 个用例 |
+| S3 工作目录与锁 | 显式 `--cwd`、向上认领标记、无标记三种解析；标记原子写、权限 600/700；锁含存活进程判断、陈旧锁接管、token 校验释放 | 37 个用例 |
+| S4 T0 实验 | E1–E5 全部 PASS，`npm run exp:t0` 可重复运行 | `experiments/t0/README.md` |
+| 启动接线 | CLI 打印工作目录、配置与快捷参数概览；不创建目录、不获取锁、不写文件 | `src/cli/main.ts` + 8 个用例 |
+
+### 6.2 T0 实验结论
+
+| 实验 | 实际结果 | 对下一阶段的影响 |
+| --- | --- | --- |
+| E1 生成与确认分离 | 第一次 `invoke` 停在 `confirmGate`；新连接 + 新 saver 实例恢复后 `artifactId` 与内容指纹完全一致，状态仍为 `temporary`；恢复只重跑门禁节点（节点序列 `generate, confirmGate, confirmGate`） | 生成节点与确认节点必须分开；候选不能因为“被生成”或“被恢复”自动变成已确认 |
+| E2 重复确认 | 同一决策提交两次：第一次 `applied`、第二次 `duplicate_confirmation`，阶段版本保持 1，确认事件与确认表各 1 条 | 以 `(artifactId, artifactHash, confirmationHash, decision)` 为唯一键做幂等，重复提交不二次推进 |
+| E3 事务共同提交 | 共享同一连接、事务内调用 `saver.put()`：成功时五者都在，但注入异常后业务行回滚、checkpoint 行残留 1 条；改为事务外预序列化 + 事务内直接 `INSERT checkpoints`：成功时五者一致且 `getTuple()` 可读回，异常后全为 0 | 确认提交不能走 `saver.put()`；采用预序列化 + 同事务直写，见 [ADR 0012](../adr/0012-checkpoint-business-shared-transaction.md) |
+| E4 文件与数据库边界 | 文件已写、DB 未提交时中断：对账把文件判为“未登记版本”并给出 adopt/discard 提示；重跑结论不变；adopt 后一致且版本仍为 `temporary`；discard 把文件移到 `.discarded` 而不删除；正常路径对账一致 | 主稿先写临时名再 `rename`；正式路径只放完整文件；恢复时对账并要求人工决定，不静默采用或覆盖 |
+| E5 保存器能力 | `1.1.0`：`constructor(db: Database, serde?: SerializerProtocol)`，接受外部连接，公开 `saver.db`，但 `put()`/`putWrites()` 均为 `async`，无 `transaction` 方法；`interrupt()` 在任务边界落 checkpoint（暂停时 3 行 checkpoints、16 行 writes） | 依赖版本锁定；T5 需加表结构契约测试，升级保存器必须先重跑 `npm run exp:t0` |
+
+### 6.3 未验证项与限制
+
+- 首次配置引导（写 `config.json`）未实现；当前只读取和校验，`firstRun` 标记留给 T13。
+- 全局目录创建（`~/.writing-agent/` 及其权限）只写了策略、未接线；按交接要求，只有用户真正启动会话时才创建。
+- 锁未接入启动流程，也未处理跨主机共享文件系统与 `O_EXCL` 竞态；`release()` 的 `SIGINT` 路径属 T11。
+- E3 的“预序列化”在实验里直接复用了 `SqliteSaver` 的列结构；生产适配层与表结构契约测试属 T5。
+- 根因之一：`better-sqlite3` 事务是同步的，而保存器写接口是异步的。这是库边界事实，不是配置问题，故不做“加大事务范围”之类的绕法。

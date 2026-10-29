@@ -6,6 +6,13 @@
 
 ## 2026-10-29
 
+### 启动阶段：脚手架、配置层与暂停恢复实验
+
+- 新增可运行的最小程序：`writing-agent --help`、类型检查、测试、构建；依赖锁定 `@langchain/langgraph@1.5.3`、`@langchain/langgraph-checkpoint-sqlite@1.1.0`、`better-sqlite3@12.10.0`、`typescript@7.0.2`、`vitest@5.0.5`。
+- 配置层支持环境变量覆盖 `~/.writing-agent/config.json`，损坏文件与非法 URL 给可读错误；工作目录支持 `--cwd` 优先、向上认领 `.writing-agent` 标记、无标记用当前目录；单实例锁支持存活进程判断、陈旧锁接管与幂等释放。
+- T0 实验 E1–E5 全 PASS：确认生成与确认必须分开、重复确认可幂等、`SqliteSaver.put()` 无法参与同步事务、文件与数据库边界需对账。新增 [ADR 0012](../adr/0012-checkpoint-business-shared-transaction.md) 记录共同提交的适配方式；阶段方案与结果见 [2026-10-29 启动与关键机制验证](../design/2026-10-29-bootstrap-checkpoint-experiments.md)，实际改动见 [变更记录](2026-10-29-bootstrap-checkpoint.md)。
+- 主计划勾选 T0；T1、T2 记录实际进度但保留未勾选，因为交互界面、首次配置引导、全局目录创建与锁接线尚未实现。
+
 ### 开发准备、资料入口与实现后学习
 
 - 用户确认改为“先实现、阶段记录技术方案与决策、实现后回看学习”。新建决策 0011，原 0010 标记为已取代并保留历史。
