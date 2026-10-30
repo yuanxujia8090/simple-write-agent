@@ -8,6 +8,7 @@
 
 | 日期 | 阶段 | 方案文档 | 变更记录 | 状态 |
 | --- | --- | --- | --- | --- |
+| 2026-10-30 | 主题配置与确定性 HTML 导出 | [方案](2026-10-30-theme-html-export.md) | [变更](../changes/2026-10-30-theme-html-export.md) | 已完成 |
 | 2026-10-30 | 持久化与文件保护闭环 | [方案](2026-10-30-persistence-file-protection.md) | [变更](../changes/2026-10-30-persistence-file-protection.md) | 已完成 |
 | 2026-10-29 | 首条写作闭环（固定模型结果） | [方案](2026-10-29-first-writing-loop.md) | [变更](../changes/2026-10-29-first-writing-loop.md) | 已完成 |
 | 2026-10-29 | 启动与关键机制验证 | [方案](2026-10-29-bootstrap-checkpoint-experiments.md) | [变更](../changes/2026-10-29-bootstrap-checkpoint.md) | 已完成 |

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { createGraphRunner } from "../agent/runner.js";
+import { loadTheme } from "../config/theme.js";
 import { createFileWriter } from "../artifacts/files.js";
 import { GATE_DEFINITIONS } from "../domain/gates.js";
 import type {
@@ -34,6 +35,8 @@ export type ReplayOptions = {
   /** 传入时改用 SQLite 持久化；测试一律用临时目录。 */
   dbPath?: string;
   mode?: SessionMode;
+  /** 主题文件路径；不传用内置默认主题。 */
+  themePath?: string;
   /** 测试用：注入固定时间，避免快照和排序抖动。 */
   now?: () => string;
 };
@@ -43,6 +46,9 @@ export type ReplayResult = {
   mode: SessionMode;
   /** 有持久化库时给出库文件路径，便于二次打开核对。 */
   dbPath: string | null;
+  /** 主题来源与提示（非法配置会回退并给警告）。 */
+  themeName: string;
+  themeWarnings: string[];
   sessionId: string;
   status: RunState["status"];
   stage: string;
@@ -111,10 +117,17 @@ export async function runReplay(options: ReplayOptions): Promise<ReplayResult> {
 
   const mode = options.mode ?? "normal";
   const now = options.now;
+  const loadedTheme = loadTheme(
+    options.themePath === undefined ? {} : { path: options.themePath },
+  );
   const inMemory = () => {
     const service = createInMemoryWorkflowService(now ? { now } : {});
     return {
-      runner: createGraphRunner({ service, files: createFileWriter() }) as GraphRunner,
+      runner: createGraphRunner({
+        service,
+        files: createFileWriter(),
+        theme: loadedTheme.theme,
+      }) as GraphRunner,
       close: () => undefined,
     };
   };
@@ -123,6 +136,7 @@ export async function runReplay(options: ReplayOptions): Promise<ReplayResult> {
       ? inMemory()
       : createPersistentRuntime({
           dbPath: options.dbPath,
+          theme: loadedTheme.theme,
           ...(now === undefined ? {} : { now }),
         });
   const runner = runtime.runner;
@@ -154,11 +168,19 @@ export async function runReplay(options: ReplayOptions): Promise<ReplayResult> {
       scenario,
       mode,
       dbPath: options.dbPath ?? null,
+      themeName: loadedTheme.theme.name,
+      themeWarnings: loadedTheme.warnings,
       sessionId: session.id,
     status: state.status,
     stage: session.stage,
     gates,
-    output: state.output ?? { outlinePath: null, draftPath: null, exportedPath: null },
+    output: state.output ?? {
+      outlinePath: null,
+      draftPath: null,
+      exportedPath: null,
+      htmlPath: null,
+      htmlError: null,
+    },
     traceCount: session.trace.length,
     revisions: session.revisions.length,
     artifacts: session.artifacts.map((artifact) => ({
@@ -196,6 +218,8 @@ export function formatResult(result: ReplayResult): string {
     `大纲：${result.output.outlinePath ?? "（未生成）"}`,
     `主稿：${result.output.draftPath ?? "（未生成）"}`,
     `导出：${result.output.exportedPath ?? "（未生成）"}`,
+    `HTML：${result.output.htmlPath ?? "（未生成）"}${result.output.htmlError === null ? "" : `（失败：${result.output.htmlError}）`}`,
+    `主题：${result.themeName}${result.themeWarnings.length === 0 ? "" : `（提示：${result.themeWarnings.join("；")}）`}`,
     `Trace 事件：${result.traceCount} 条；修订指令：${result.revisions} 条`,
   ];
   if (result.error) {

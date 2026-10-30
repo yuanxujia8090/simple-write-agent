@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -47,6 +47,13 @@ describe("首条写作闭环重放", () => {
     expect(result.output.draftPath).not.toBeNull();
     expect(result.output.exportedPath).toBe(result.output.draftPath);
     expect(readText(result.output.outlinePath!)).toContain("## 1.");
+    // HTML 与 Markdown 同 slug、同目录，内容来自同一份主稿
+    expect(result.output.htmlPath).toBe(result.output.exportedPath!.replace(/\.md$/, ".html"));
+    expect(existsSync(result.output.htmlPath!)).toBe(true);
+    const html = readText(result.output.htmlPath!);
+    expect(html.startsWith("<div style=")).toBe(true);
+    expect(html).toContain("<h1");
+    expect(result.output.htmlError).toBeNull();
     expect(readText(result.output.exportedPath!).length).toBeGreaterThan(1500);
 
     const byKind = new Map(result.artifacts.map((artifact) => [artifact.kind, artifact]));
@@ -100,6 +107,7 @@ describe("快速模式与持久化库", () => {
     expect(result.mode).toBe("fast");
     expect(result.gates.map((gate) => gate.gateId)).toEqual(["thesis", "final"]);
     expect(readText(result.output.exportedPath!).length).toBeGreaterThan(1500);
+    expect(existsSync(result.output.htmlPath!)).toBe(true);
   });
 
   it("传入库文件时会话落到 SQLite，并能在新连接里读回", async () => {
@@ -120,6 +128,31 @@ describe("快速模式与持久化库", () => {
     } finally {
       reloaded.close();
     }
+  });
+});
+
+describe("主题接线", () => {
+  it("指定主题文件时用它的名称与配色渲染 HTML", async () => {
+    const root = makeRoot();
+    const themePath = new URL("../../archive/my-theme.json", import.meta.url).pathname;
+    const result = await runReplay({ workspaceRoot: root, scenario: "basic", themePath });
+
+    expect(result.themeName).toBe("橙色");
+    expect(result.themeWarnings).toEqual([]);
+    const html = readText(result.output.htmlPath!);
+    expect(html).toContain("#EF7534");
+  });
+
+  it("主题非法时回退到内置默认并保留警告", async () => {
+    const root = makeRoot();
+    const brokenPath = join(root, "broken-theme.json");
+    writeFileSync(brokenPath, JSON.stringify({ version: 2 }), "utf8");
+    const result = await runReplay({ workspaceRoot: root, scenario: "basic", themePath: brokenPath });
+
+    expect(result.status).toBe("exported");
+    expect(result.themeName).toBe("默认");
+    expect(result.themeWarnings.join()).toContain("版本只接受 1");
+    expect(existsSync(result.output.htmlPath!)).toBe(true);
   });
 });
 

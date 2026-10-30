@@ -116,7 +116,12 @@ export type DecisionInput = {
 export type RunOutput = {
   outlinePath: string | null;
   draftPath: string | null;
+  /** Markdown 终稿路径。 */
   exportedPath: string | null;
+  /** 与导出的 Markdown 同源、同 slug 的 HTML 路径。 */
+  htmlPath: string | null;
+  /** HTML 失败时的可读原因：Markdown 已导出，属部分成功。 */
+  htmlError: string | null;
 };
 
 export type RunState = {

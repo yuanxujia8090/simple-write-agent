@@ -36,10 +36,21 @@ export type ExportMarkdownInput = {
   replacePath?: string;
 };
 
+export type WriteHtmlInput = {
+  workspaceRoot: string;
+  title: string;
+  html: string;
+  slug?: string;
+  /** 允许覆盖的路径：本会话自己的 HTML（重新导出时替换）。 */
+  replacePath?: string;
+};
+
 export interface FileWriter {
   writeOutline(input: WriteOutlineInput): WrittenFile;
   writeDraft(input: WriteDraftInput): WrittenFile;
   exportMarkdown(input: ExportMarkdownInput): WrittenFile;
+  /** 把同一份主稿渲染出的 HTML 写到 Markdown 旁边；文件名与 Markdown 共用 slug。 */
+  writeHtml(input: WriteHtmlInput): WrittenFile;
   /** 读磁盘当前内容指纹；文件不存在返回 null。用于外部编辑检测。 */
   readHash(path: string): string | null;
 }

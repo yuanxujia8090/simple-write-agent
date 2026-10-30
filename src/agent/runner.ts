@@ -5,6 +5,7 @@
 import { Command, INTERRUPT, isInterrupted, type BaseCheckpointSaver } from "@langchain/langgraph";
 
 import { AppError } from "../shared/errors.js";
+import type { Theme } from "../config/theme.js";
 import type { FileWriter } from "../domain/files.js";
 import type { CheckpointPort } from "../domain/store.js";
 import type {
@@ -27,6 +28,8 @@ export type GraphRunnerOptions = {
   checkpointer?: BaseCheckpointSaver;
   /** 稳定 checkpoint 与业务状态同事务提交的取用口（ADR 0012）。 */
   checkpoints?: CheckpointPort;
+  /** 导出 HTML 用主题；不传用内置默认主题。 */
+  theme?: Theme;
 };
 
 function errorMessage(error: unknown): string {
@@ -40,7 +43,13 @@ export function createGraphRunner(options: GraphRunnerOptions): GraphRunner {
 
   let sessionId: string | null = null;
   let pendingGate: ConfirmationPackage | null = null;
-  const output: RunOutput = { outlinePath: null, draftPath: null, exportedPath: null };
+  const output: RunOutput = {
+    outlinePath: null,
+    draftPath: null,
+    exportedPath: null,
+    htmlPath: null,
+    htmlError: null,
+  };
 
   const requireSessionId = (): string => {
     if (sessionId === null) {
@@ -55,6 +64,8 @@ export function createGraphRunner(options: GraphRunnerOptions): GraphRunner {
     output.outlinePath = values.outlineFilePath ?? null;
     output.draftPath = values.draftFilePath ?? null;
     output.exportedPath = values.exportedFilePath ?? null;
+    output.htmlPath = values.htmlFilePath ?? null;
+    output.htmlError = values.htmlError ?? null;
   };
 
   const snapshot = (): RunOutput => ({ ...output });
@@ -105,6 +116,8 @@ export function createGraphRunner(options: GraphRunnerOptions): GraphRunner {
     output.outlinePath = null;
     output.draftPath = null;
     output.exportedPath = null;
+    output.htmlPath = null;
+    output.htmlError = null;
 
     const snapshotState = await graph.getState(threadConfig(sessionIdToOpen));
     const gate =
@@ -130,6 +143,8 @@ export function createGraphRunner(options: GraphRunnerOptions): GraphRunner {
     output.outlinePath = null;
     output.draftPath = null;
     output.exportedPath = null;
+    output.htmlPath = null;
+    output.htmlError = null;
 
     const initial: WritingGraphState = {
       sessionId: session.id,
@@ -148,6 +163,8 @@ export function createGraphRunner(options: GraphRunnerOptions): GraphRunner {
       draftFilePath: null,
       draftFileHash: null,
       exportedFilePath: null,
+      htmlFilePath: null,
+      htmlError: null,
       next: "intake",
     };
 

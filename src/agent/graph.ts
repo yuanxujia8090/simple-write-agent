@@ -12,6 +12,7 @@ import {
   type BaseCheckpointSaver,
 } from "@langchain/langgraph";
 
+import { DEFAULT_THEME, type Theme } from "../config/theme.js";
 import type { FileWriter } from "../domain/files.js";
 import type { CheckpointPort } from "../domain/store.js";
 import { gatesForMode, rollbackStageFor } from "../domain/gates.js";
@@ -33,6 +34,7 @@ import type {
 } from "../domain/types.js";
 import { AppError } from "../shared/errors.js";
 import { fixedModel, type WritingModel } from "./fixed-model.js";
+import { renderMarkdownToHtml } from "../render/html.js";
 
 /** 节点顺序即流程顺序；门禁节点的条件边也复用这份名称集合。 */
 const FLOW_NODES = [
@@ -94,6 +96,8 @@ const WritingState = Annotation.Root({
   outlineFilePath: slot<string | null>(null),
   draftFilePath: slot<string | null>(null),
   draftFileHash: slot<string | null>(null),
+  htmlFilePath: slot<string | null>(null),
+  htmlError: slot<string | null>(null),
   exportedFilePath: slot<string | null>(null),
   next: slot<FlowNode>("intake"),
 });
@@ -115,6 +119,8 @@ export type WritingGraphOptions = {
   checkpointer?: BaseCheckpointSaver;
   /** 提供后，门禁提交会把稳定 checkpoint 与业务状态写进同一事务。 */
   checkpoints?: CheckpointPort;
+  /** 导出用主题；不传用内置默认主题。 */
+  theme?: Theme;
 };
 
 function requireGenerated<Content>(
@@ -135,6 +141,11 @@ function nodeForStage(stage: Stage): FlowNode {
   return node;
 }
 
+/** 同 slug 的 HTML 路径：把 `.md` 换成 `.html`。 */
+function htmlSiblingOf(markdownPath: string): string {
+  return markdownPath.replace(/\.md$/, ".html");
+}
+
 /** 验收用的大纲文件内容；与结构化大纲同源，避免两处各写一份章节。 */
 function renderOutlineMarkdown(outline: OutlineContent): string {
   const chapters = outline.chapters
@@ -147,6 +158,7 @@ export function createWritingGraph(options: WritingGraphOptions) {
   const { service, files } = options;
   const model = options.model ?? fixedModel;
   const checkpointer = options.checkpointer ?? new MemorySaver();
+  const theme = options.theme ?? DEFAULT_THEME;
   const checkpoints = options.checkpoints;
 
   const save = <Content extends ArtifactContent>(
@@ -356,7 +368,25 @@ export function createWritingGraph(options: WritingGraphOptions) {
       filePath: file.path,
       contentHash: file.hash,
     });
-    return { exportedFilePath: file.path };
+
+    // HTML 与 Markdown 同源：渲染失败只算部分成功，Markdown 已经落盘。
+    const rendered = renderMarkdownToHtml(final.content.markdown, theme);
+    try {
+      const html = files.writeHtml({
+        workspaceRoot: state.workspaceRoot,
+        title: final.content.title,
+        html: rendered.html,
+        slug: file.slug,
+        replacePath: htmlSiblingOf(file.path),
+      });
+      return { exportedFilePath: file.path, htmlFilePath: html.path, htmlError: null };
+    } catch (error) {
+      return {
+        exportedFilePath: file.path,
+        htmlFilePath: null,
+        htmlError: error instanceof Error ? error.message : String(error),
+      };
+    }
   };
 
   return new StateGraph(WritingState)

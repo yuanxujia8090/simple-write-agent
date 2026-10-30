@@ -16,6 +16,7 @@ import type {
   ExportMarkdownInput,
   FileWriter,
   WriteDraftInput,
+  WriteHtmlInput,
   WriteOutlineInput,
   WrittenFile,
 } from "../domain/files.js";
@@ -28,6 +29,7 @@ const OUTLINE_DIR = "outlines";
 const ARTICLE_DIR = "articles";
 const OUTLINE_EXTENSION = ".outline.md";
 const MARKDOWN_EXTENSION = ".md";
+const HTML_EXTENSION = ".html";
 
 const KEPT_CHARS = /[\p{L}\p{M}\p{N}-]/u;
 const REPEATED_HYPHENS = /-{2,}/gu;
@@ -109,6 +111,31 @@ export function createFileWriter(): FileWriter {
         ...(input.slug === undefined ? {} : { slug: input.slug }),
         content,
         fileNameFor: (slug) => `${slug}${MARKDOWN_EXTENSION}`,
+      });
+    },
+
+    writeHtml(input: WriteHtmlInput): WrittenFile {
+      const root = requireWorkspaceRoot(input.workspaceRoot);
+
+      // 重新导出时替换本会话自己的 HTML，保持与 Markdown 同 slug。
+      if (input.replacePath !== undefined) {
+        const target = resolve(input.replacePath);
+        ensureDirectory(dirname(target));
+        writeAtomically(target, input.html);
+        return {
+          path: target,
+          slug: basename(target).replace(new RegExp(`${HTML_EXTENSION}$`), ""),
+          hash: hashContent(input.html),
+        };
+      }
+
+      return writeArtifact({
+        workspaceRoot: root,
+        dir: join(root, ARTICLE_DIR),
+        title: input.title,
+        ...(input.slug === undefined ? {} : { slug: input.slug }),
+        content: input.html,
+        fileNameFor: (slug) => `${slug}${HTML_EXTENSION}`,
       });
     },
 

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { gateById, rollbackStageFor, stageAfterApprove } from "../domain/gates.js";
 import type {
   ExportMarkdownInput,
+  WriteHtmlInput,
   FileWriter,
   WriteDraftInput,
   WriteOutlineInput,
@@ -174,12 +175,14 @@ type FakeWriter = {
   outlines: RecordedWrite<WriteOutlineInput>[];
   drafts: RecordedWrite<WriteDraftInput>[];
   exports: RecordedWrite<ExportMarkdownInput>[];
+  html: RecordedWrite<WriteHtmlInput>[];
 };
 
 function createFakeWriter(): FakeWriter {
   const outlines: RecordedWrite<WriteOutlineInput>[] = [];
   const drafts: RecordedWrite<WriteDraftInput>[] = [];
   const exports: RecordedWrite<ExportMarkdownInput>[] = [];
+  const htmlFiles: RecordedWrite<WriteHtmlInput>[] = [];
   let seq = 0;
 
   const write = (
@@ -213,6 +216,15 @@ function createFakeWriter(): FakeWriter {
         exports.push({ input, written });
         return written;
       },
+      writeHtml(input) {
+        const written = write(
+          { workspaceRoot: input.workspaceRoot, markdown: input.html },
+          "articles",
+          ".html",
+        );
+        htmlFiles.push({ input, written });
+        return written;
+      },
       readHash(path) {
         const recorded = [...outlines, ...drafts, ...exports].find(
           (item) => item.written.path === path,
@@ -223,6 +235,7 @@ function createFakeWriter(): FakeWriter {
     outlines,
     drafts,
     exports,
+    html: htmlFiles,
   };
 }
 
@@ -307,7 +320,13 @@ describe("编排图 普通模式", () => {
     expect(draftPath).not.toBeNull();
     expect(exportedPath).not.toBeNull();
 
-    expect(finalState.output).toEqual({ outlinePath, draftPath, exportedPath });
+    expect(finalState.output).toEqual({
+      outlinePath,
+      draftPath,
+      exportedPath,
+      htmlPath: writer.html[0]?.written.path ?? null,
+      htmlError: null,
+    });
     expect(fake.saved.find((call) => call.kind === "outline")?.filePath).toBe(outlinePath);
     expect(fake.saved.find((call) => call.kind === "draft")?.filePath).toBe(draftPath);
     expect(writer.outlines[0]?.input.markdown).toContain("## ");

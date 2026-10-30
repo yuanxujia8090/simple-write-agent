@@ -242,3 +242,4 @@ _后续变更追加在最新日期下方，不删除历史记录。_
 - 持久化与文件保护闭环：会话/版本/门禁/Trace/修订五表落 SQLite，确认提交与 checkpoint 同事务（ADR 0012 落地），支持跨进程 `openSession` 恢复与快速模式重放；主稿被外部修改时拦下导出。[变更记录](2026-10-30-persistence-file-protection.md)｜[阶段方案](../design/2026-10-30-persistence-file-protection.md)
 - 新增阶段方案统一入口：[`docs/design/README.md`](../design/README.md)，按时间倒序索引各阶段方案与变更记录。
 - 已交付的阶段交接书移入 `archive/2026-10-29-implementation-handoff.md`，避免继续被当成下一次开工指令。
+- 主题配置与确定性 HTML 导出：zod 主题校验与回退、mdast→内联样式渲染器、导出同时产出 `.md` + `.html`、HTML 失败部分成功。[变更记录](2026-10-30-theme-html-export.md)｜[阶段方案](../design/2026-10-30-theme-html-export.md)
