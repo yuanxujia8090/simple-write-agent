@@ -27,15 +27,18 @@ export type FinalInput = { draft: DraftContent; factReport: FactReportContent };
 
 export type FinalBody = { title: string; markdown: string };
 
-/** 模型端口：编排图只依赖这组方法，真实模型接入时替换实现即可。 */
+/**
+ * 模型端口：编排图只依赖这组方法，真实模型接入时替换实现即可。
+ * 一律返回 Promise：脚本化结果同步返回，真实模型天然异步。
+ */
 export type WritingModel = {
-  brief(input: BriefInput): CreativeBriefContent;
-  materials(input: MaterialsInput): MaterialBatchContent;
-  thesis(input: ThesisInput): ThesisContent;
-  outline(input: OutlineInput): OutlineContent;
-  draft(input: DraftInput): DraftContent;
-  factReport(input: FactReportInput): FactReportContent;
-  final(input: FinalInput): FinalBody;
+  brief(input: BriefInput): Promise<CreativeBriefContent>;
+  materials(input: MaterialsInput): Promise<MaterialBatchContent>;
+  thesis(input: ThesisInput): Promise<ThesisContent>;
+  outline(input: OutlineInput): Promise<OutlineContent>;
+  draft(input: DraftInput): Promise<DraftContent>;
+  factReport(input: FactReportInput): Promise<FactReportContent>;
+  final(input: FinalInput): Promise<FinalBody>;
 };
 
 export const FIXED_TITLE = "把知识库从收藏夹变成工作台";
@@ -250,10 +253,10 @@ const DOWNGRADE_REWRITES: Record<string, string> = {
 };
 
 export const fixedModel: WritingModel = {
-  brief({ topic }) {
+  async brief({ topic }) {
     return { ...FIXED_BRIEF, topic };
   },
-  materials({ supplied }) {
+  async materials({ supplied }) {
     if (supplied.length === 0) {
       return FIXED_MATERIALS;
     }
@@ -268,19 +271,19 @@ export const fixedModel: WritingModel = {
       ],
     };
   },
-  thesis() {
+  async thesis() {
     return FIXED_THESIS;
   },
-  outline() {
+  async outline() {
     return FIXED_OUTLINE;
   },
-  draft() {
+  async draft() {
     return FIXED_DRAFT;
   },
-  factReport() {
+  async factReport() {
     return FIXED_FACT_REPORT;
   },
-  final({ draft, factReport }) {
+  async final({ draft, factReport }) {
     const markdown = factReport.downgrades.reduce(
       (text, entry) => text.replace(entry.fact, DOWNGRADE_REWRITES[entry.fact] ?? entry.fact),
       draft.markdown,

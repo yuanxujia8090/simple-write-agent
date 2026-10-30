@@ -8,6 +8,7 @@ import { createGraphRunner } from "./agent/runner.js";
 import { createSaverCheckpointPort } from "./agent/checkpoints.js";
 import { createFileWriter } from "./artifacts/files.js";
 import type { Theme } from "./config/theme.js";
+import type { WritingModel } from "./agent/fixed-model.js";
 import type { FileWriter } from "./domain/files.js";
 import type { GraphRunner, WorkflowService } from "./domain/service.js";
 import { assertCheckpointSchema } from "./store/schema.js";
@@ -33,6 +34,8 @@ export type PersistentRuntimeOptions = {
   files?: FileWriter;
   /** 导出 HTML 用主题；不传用内置默认主题。 */
   theme?: Theme;
+  /** 模型实现；不传用脚本化固定结果。 */
+  model?: WritingModel;
   createId?: () => string;
   now?: () => string;
 };
@@ -56,6 +59,7 @@ export function createPersistentRuntime(options: PersistentRuntimeOptions): Pers
       checkpointer: saver,
       checkpoints: createSaverCheckpointPort(saver),
       ...(options.theme === undefined ? {} : { theme: options.theme }),
+      ...(options.model === undefined ? {} : { model: options.model }),
     });
 
     return { service, runner, close: () => db.close() };

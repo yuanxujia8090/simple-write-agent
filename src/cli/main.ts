@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { loadLocalEnvFile } from "../config/env-file.js";
 import { loadConfig, type AppConfig } from "../config/index.js";
 import { AppError, exitCodeFor } from "../shared/errors.js";
 import { resolveWorkspace, type Workspace } from "../workspace/index.js";
@@ -37,10 +38,17 @@ function readVersion(): string {
 }
 
 function defaultDeps(): CliDeps {
+  const env: Record<string, string | undefined> = { ...process.env };
+  try {
+    // 真实模型配置放 .env.local；文件不存在时安静跳过，shell 里的值优先。
+    loadLocalEnvFile({ cwd: process.cwd(), env });
+  } catch {
+    // 环境文件只是便利入口：读不了不阻塞启动，配置检查会给出对应提示。
+  }
   return {
     cwd: process.cwd(),
     homeDir: homedir(),
-    env: process.env,
+    env,
     stdout: (text) => process.stdout.write(`${text}\n`),
     stderr: (text) => process.stderr.write(`${text}\n`),
     version: readVersion(),

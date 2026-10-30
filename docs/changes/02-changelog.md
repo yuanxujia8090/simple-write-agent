@@ -243,3 +243,4 @@ _后续变更追加在最新日期下方，不删除历史记录。_
 - 新增阶段方案统一入口：[`docs/design/README.md`](../design/README.md)，按时间倒序索引各阶段方案与变更记录。
 - 已交付的阶段交接书移入 `archive/2026-10-29-implementation-handoff.md`，避免继续被当成下一次开工指令。
 - 主题配置与确定性 HTML 导出：zod 主题校验与回退、mdast→内联样式渲染器、导出同时产出 `.md` + `.html`、HTML 失败部分成功。[变更记录](2026-10-30-theme-html-export.md)｜[阶段方案](../design/2026-10-30-theme-html-export.md)
+- 真实模型适配：`ChatPort` 端口 + AI SDK 适配器 + 7 阶段结构化调用；`WritingModel` 异步化；`.env.local` 配置入口与 `replay --model env`。[变更记录](2026-10-30-model-adapter.md)｜[阶段方案](../design/2026-10-30-model-adapter.md)

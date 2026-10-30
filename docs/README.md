@@ -1,7 +1,7 @@
 # 开发前阅读入口
 
 - 更新：2026-10-30
-- 当前阶段：主题配置与确定性 HTML 导出已完成；下一阶段继续补齐产品能力（真实模型、搜索、HTML 复制/重试、作者档案、TUI）。
+- 当前阶段：真实模型适配已完成（本机烟测待跑）；下一阶段为搜索提供方（T9）与 TUI（T13）。
 - 协作顺序：先实现 → 分阶段记录方案、决策与验证 → 实现后回看学习。
 
 ## 先读这四处
@@ -11,7 +11,7 @@
 3. [总体技术方案](design/2026-09-05-agent-technical-design.md)：模块与数据如何协作；状态是“总体方向沿用，暂停恢复与共同提交已实测（见 ADR 0012）”，其余接口仍以实际版本核对。
 4. [实施计划](plan/00-plan.md)：§1.3 是实际执行顺序；§6 是功能任务清单；§7–8 是验证与交付要求。
 
-阶段方案统一入口：[阶段方案索引](design/README.md)（按时间倒序列出每个阶段的方案与变更记录）。已完成的三个阶段：[启动与关键机制验证](design/2026-10-29-bootstrap-checkpoint-experiments.md)、[首条写作闭环](design/2026-10-29-first-writing-loop.md)、[持久化与文件保护闭环](design/2026-10-30-persistence-file-protection.md)、[主题配置与确定性 HTML 导出](design/2026-10-30-theme-html-export.md)；对应变更：[启动阶段](changes/2026-10-29-bootstrap-checkpoint.md)、[首条闭环](changes/2026-10-29-first-writing-loop.md)、[持久化](changes/2026-10-30-persistence-file-protection.md)、[主题与 HTML](changes/2026-10-30-theme-html-export.md)。
+阶段方案统一入口：[阶段方案索引](design/README.md)（按时间倒序列出每个阶段的方案与变更记录）。已完成的三个阶段：[启动与关键机制验证](design/2026-10-29-bootstrap-checkpoint-experiments.md)、[首条写作闭环](design/2026-10-29-first-writing-loop.md)、[持久化与文件保护闭环](design/2026-10-30-persistence-file-protection.md)、[主题配置与确定性 HTML 导出](design/2026-10-30-theme-html-export.md)、[真实模型适配](design/2026-10-30-model-adapter.md)；对应变更：[启动阶段](changes/2026-10-29-bootstrap-checkpoint.md)、[首条闭环](changes/2026-10-29-first-writing-loop.md)、[持久化](changes/2026-10-30-persistence-file-protection.md)、[主题与 HTML](changes/2026-10-30-theme-html-export.md)、[模型适配](changes/2026-10-30-model-adapter.md)。
 
 开发准备阶段的结论、矛盾及落地时点集中在 [开发准备审查](design/2026-10-29-development-readiness-review.md)。术语不清楚时查根目录 [CONTEXT.md](../CONTEXT.md)。
 
@@ -25,7 +25,8 @@
 - 已跑通（2026-10-29，固定结果）：素材 → 简报 → 研究整理 → 论点 → 大纲 → 草稿 → 事实核查 → Markdown 导出，5 道门禁含素材采纳；`npm run replay` 可重放全部批准、论点修改、终稿拒绝三条路径。
 - 已持久化（2026-10-30）：会话、产出版本、门禁、Trace、修订落 SQLite；确认提交与稳定 checkpoint 同事务（ADR 0012）；新进程 `openSession` 能拿回未决确认卡并继续到导出；主稿被外部改动时导出被拦下且不覆盖。`npm test` 182 个通过，`npm run replay -- --db <路径>` 可验证落库。
 - 已能导出双格式（2026-10-30）：主题 JSON 校验与回退、mdast→内联样式 HTML，导出同时得到 `.md` + `.html`；`npm test` 202 个通过。
-- 下一步：真实模型适配（T7）与搜索提供方（T9）；HTML 复制/重试与主题重载随 TUI（T13/T14）。详细范围看实施计划 §1.3 与 §6 任务清单。
+- 已能接真实模型（2026-10-30）：`.env.local` 填 `WRITING_AGENT_MODEL_ID` 等字段后 `npm run replay -- --model env` 就会调真实模型；未填时给「未配置模型 ID」。`npm test` 213 个通过。
+- 下一步：搜索提供方（T9，可用 mock 验收）、TUI 与斜杠命令（T13）；真实模型烟测需要你本机先起模型服务。详细范围看实施计划 §1.3 与 §6 任务清单。
 
 ## 有效决策索引
 

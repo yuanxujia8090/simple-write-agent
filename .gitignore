@@ -26,3 +26,7 @@ outlines/
 
 # pi 会话本地状态
 .pi/
+
+# 本地环境变量（含真实模型密钥，不提交）
+.env.local
+.env

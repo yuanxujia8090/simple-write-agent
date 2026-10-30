@@ -219,13 +219,13 @@ export function createWritingGraph(options: WritingGraphOptions) {
     return { next: approved ? approvedNext : nodeForStage(rollbackStageFor(gateId)) };
   };
 
-  const intake = (state: WritingGraphState) => {
-    const brief = model.brief({ topic: state.topic });
+  const intake = async (state: WritingGraphState) => {
+    const brief = await model.brief({ topic: state.topic });
     return { briefArtifact: save(state.sessionId, "creative_brief", brief, null) };
   };
 
-  const research = (state: WritingGraphState) => {
-    const materials = model.materials({
+  const research = async (state: WritingGraphState) => {
+    const materials = await model.materials({
       topic: state.topic,
       supplied: state.suppliedMaterials,
     });
@@ -241,19 +241,19 @@ export function createWritingGraph(options: WritingGraphOptions) {
 
   const materialsGate = (state: WritingGraphState) => gateStep(state, "materials", "thesis");
 
-  const generateThesis = (state: WritingGraphState) => {
+  const generateThesis = async (state: WritingGraphState) => {
     const brief = requireGenerated(state.briefArtifact, "创作简报");
     const materials = requireGenerated(state.materialsArtifact, "素材批次");
-    const content = model.thesis({ brief: brief.content, materials: materials.content });
+    const content = await model.thesis({ brief: brief.content, materials: materials.content });
     return { thesisArtifact: save(state.sessionId, "thesis", content, materials.ref) };
   };
 
   const thesisGate = (state: WritingGraphState) => gateStep(state, "thesis", "outline");
 
-  const generateOutline = (state: WritingGraphState) => {
+  const generateOutline = async (state: WritingGraphState) => {
     const brief = requireGenerated(state.briefArtifact, "创作简报");
     const thesisArtifact = requireGenerated(state.thesisArtifact, "论点");
-    const content = model.outline({ brief: brief.content, thesis: thesisArtifact.content });
+    const content = await model.outline({ brief: brief.content, thesis: thesisArtifact.content });
     const file = files.writeOutline({
       workspaceRoot: state.workspaceRoot,
       title: content.title,
@@ -274,10 +274,10 @@ export function createWritingGraph(options: WritingGraphOptions) {
 
   const outlineGate = (state: WritingGraphState) => gateStep(state, "outline", "drafting");
 
-  const generateDraft = (state: WritingGraphState) => {
+  const generateDraft = async (state: WritingGraphState) => {
     const outlineArtifact = requireGenerated(state.outlineArtifact, "大纲");
     const thesisArtifact = requireGenerated(state.thesisArtifact, "论点");
-    const content = model.draft({
+    const content = await model.draft({
       outline: outlineArtifact.content,
       thesis: thesisArtifact.content,
     });
@@ -305,9 +305,9 @@ export function createWritingGraph(options: WritingGraphOptions) {
    * 所以两者都在本节点生成。终稿只引用本次生成的事实核查报告版本；报告被修改或
    * 拒绝时，流程会回到上游，下一次执行本节点会覆盖这两个临时产物。
    */
-  const generateReviewArtifacts = (state: WritingGraphState) => {
+  const generateReviewArtifacts = async (state: WritingGraphState) => {
     const draft = requireGenerated(state.draftArtifact, "主稿");
-    const factReportContent = model.factReport({ draft: draft.content });
+    const factReportContent = await model.factReport({ draft: draft.content });
     const factReportArtifact = save(
       state.sessionId,
       "fact_report",
@@ -315,7 +315,7 @@ export function createWritingGraph(options: WritingGraphOptions) {
       draft.ref,
     );
 
-    const body = model.final({ draft: draft.content, factReport: factReportContent });
+    const body = await model.final({ draft: draft.content, factReport: factReportContent });
     const finalContent: FinalContent = {
       title: body.title,
       markdown: body.markdown,

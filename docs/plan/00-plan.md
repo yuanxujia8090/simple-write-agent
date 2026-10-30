@@ -1,6 +1,6 @@
 # tui-writing-agent-ts 实施计划
 
-- 当前状态：开发准备、启动与关键机制验证、首条写作闭环、持久化与文件保护、主题与 HTML 导出五个阶段已完成；真实模型/搜索/TUI 与完整验收待执行。
+- 当前状态：六个阶段已完成（开发准备、启动验证、首条闭环、持久化、主题与 HTML、模型适配）；真实模型烟测、搜索、TUI 与完整验收待执行。
 - 更新日期：2026-10-30
 - 阅读入口：[文档导航](../README.md)
 - 当前执行规则：[0011：先实现、阶段留证、完成后学习](../adr/0011-implementation-first-learning-after.md)
@@ -218,6 +218,7 @@ idle → intake → research → thesis → outline → drafting → review → 
 
 - [ ] **T7 Vercel AI SDK 模型适配**：封装模型调用、结构化输出、工具调用和流式事件；模型节点不得直接创建第二套 Agent Loop。
   - 验证：mock provider 的文本、结构化输出、tool call、流式事件和错误测试。
+  - 进度（2026-10-30）：`src/model/chat.ts`（端口）+ `src/model/ai-sdk.ts`（`ai` + `@ai-sdk/openai-compatible`）+ `src/model/writing-model.ts`（7 阶段结构化调用）；`WritingModel` 全异步；`replay --model env` 可用；`.env.local` 提供真实模型配置入口。测试覆盖结构化映射、prompt、错误透传、流式事件契约与配置校验（11 个）。**未完成**：真实模型烟测未运行（本机无服务）、SDK 流式/工具调用映射未端到端验证、无重试与限流。
 - [ ] **T8 工具注册与权限**：实现 `readMaterials`、`searchWeb`、`readWeb`、`writeDraft`、`checkFacts`、`listInterviewQuestions`、`exportMarkdown`；使用 Zod（TypeScript 运行时数据校验库）校验输入输出。
   - 只读工具可由 Agent 在任意阶段调用，也可由 `/search`、`/read` 触发；写入工具受阶段限制。
   - 读取结果先入 Trace；Agent 主动读取与 `/search` 结果整批确认后入 Material，用户显式 `/read` 直接入 Material；确认后复制为 `materials/<sessionId>/` 快照，后续 `readMaterials` 从快照读取。

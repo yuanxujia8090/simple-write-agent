@@ -5,8 +5,11 @@ import { join } from "node:path";
 
 import { createGraphRunner } from "../agent/runner.js";
 import { loadTheme } from "../config/theme.js";
+import { createAiSdkChat } from "../model/ai-sdk.js";
+import { createAiWritingModel } from "../model/writing-model.js";
 import { createFileWriter } from "../artifacts/files.js";
 import { GATE_DEFINITIONS } from "../domain/gates.js";
+import type { ModelConfig } from "../config/index.js";
 import type {
   ConfirmationPackage,
   DecisionInput,
@@ -16,6 +19,7 @@ import type {
 } from "../domain/service.js";
 import type { SessionMode } from "../domain/types.js";
 import { createPersistentRuntime } from "../runtime.js";
+import { AppError } from "../shared/errors.js";
 import { createInMemoryWorkflowService } from "../workflow/service.js";
 
 export type ReplayScenario = "basic" | "revise" | "reject";
@@ -37,6 +41,10 @@ export type ReplayOptions = {
   mode?: SessionMode;
   /** 主题文件路径；不传用内置默认主题。 */
   themePath?: string;
+  /** 模型来源：mock（脚本化固定结果，默认）或 env（读取配置的真实模型）。 */
+  model?: "mock" | "env";
+  /** 真实模型配置；`model === "env"` 时必填。 */
+  modelConfig?: ModelConfig;
   /** 测试用：注入固定时间，避免快照和排序抖动。 */
   now?: () => string;
 };
@@ -49,6 +57,9 @@ export type ReplayResult = {
   /** 主题来源与提示（非法配置会回退并给警告）。 */
   themeName: string;
   themeWarnings: string[];
+  /** 模型来源：mock 或 env。 */
+  modelSource: "mock" | "env";
+  modelLabel: string;
   sessionId: string;
   status: RunState["status"];
   stage: string;
@@ -120,6 +131,16 @@ export async function runReplay(options: ReplayOptions): Promise<ReplayResult> {
   const loadedTheme = loadTheme(
     options.themePath === undefined ? {} : { path: options.themePath },
   );
+  const modelSource = options.model ?? "mock";
+  const realModel =
+    modelSource === "env"
+      ? (() => {
+          if (options.modelConfig === undefined) {
+            throw new AppError("CONFIG", "使用真实模型时缺少模型配置", "先运行 writing-agent 或用 .env.local 配置模型");
+          }
+          return createAiWritingModel({ chat: createAiSdkChat({ model: options.modelConfig }) });
+        })()
+      : undefined;
   const inMemory = () => {
     const service = createInMemoryWorkflowService(now ? { now } : {});
     return {
@@ -127,6 +148,7 @@ export async function runReplay(options: ReplayOptions): Promise<ReplayResult> {
         service,
         files: createFileWriter(),
         theme: loadedTheme.theme,
+        ...(realModel === undefined ? {} : { model: realModel }),
       }) as GraphRunner,
       close: () => undefined,
     };
@@ -137,6 +159,7 @@ export async function runReplay(options: ReplayOptions): Promise<ReplayResult> {
       : createPersistentRuntime({
           dbPath: options.dbPath,
           theme: loadedTheme.theme,
+          ...(realModel === undefined ? {} : { model: realModel }),
           ...(now === undefined ? {} : { now }),
         });
   const runner = runtime.runner;
@@ -170,6 +193,9 @@ export async function runReplay(options: ReplayOptions): Promise<ReplayResult> {
       dbPath: options.dbPath ?? null,
       themeName: loadedTheme.theme.name,
       themeWarnings: loadedTheme.warnings,
+      modelSource,
+      modelLabel:
+        realModel === undefined ? "mock（脚本化固定结果）" : `${options.modelConfig?.modelId ?? ""}`,
       sessionId: session.id,
     status: state.status,
     stage: session.stage,
@@ -220,6 +246,7 @@ export function formatResult(result: ReplayResult): string {
     `导出：${result.output.exportedPath ?? "（未生成）"}`,
     `HTML：${result.output.htmlPath ?? "（未生成）"}${result.output.htmlError === null ? "" : `（失败：${result.output.htmlError}）`}`,
     `主题：${result.themeName}${result.themeWarnings.length === 0 ? "" : `（提示：${result.themeWarnings.join("；")}）`}`,
+    `模型：${result.modelSource === "env" ? `真实模型 ${result.modelLabel}` : result.modelLabel}`,
     `Trace 事件：${result.traceCount} 条；修订指令：${result.revisions} 条`,
   ];
   if (result.error) {
