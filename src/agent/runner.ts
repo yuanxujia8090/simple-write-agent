@@ -2,9 +2,11 @@
  * 运行入口：start 跑到第一个门禁暂停，resume 校验确认指纹后续跑。
  * 图状态与业务状态各存一份，调用方只看到 RunState。
  */
-import { Command, INTERRUPT, isInterrupted } from "@langchain/langgraph";
+import { Command, INTERRUPT, isInterrupted, type BaseCheckpointSaver } from "@langchain/langgraph";
 
+import { AppError } from "../shared/errors.js";
 import type { FileWriter } from "../domain/files.js";
+import type { CheckpointPort } from "../domain/store.js";
 import type {
   ConfirmationPackage,
   DecisionInput,
@@ -21,6 +23,10 @@ export type GraphRunnerOptions = {
   service: WorkflowService;
   files: FileWriter;
   model?: WritingModel;
+  /** 传 SqliteSaver 才能跨进程恢复；不传则用进程内 MemorySaver。 */
+  checkpointer?: BaseCheckpointSaver;
+  /** 稳定 checkpoint 与业务状态同事务提交的取用口（ADR 0012）。 */
+  checkpoints?: CheckpointPort;
 };
 
 function errorMessage(error: unknown): string {
@@ -87,6 +93,32 @@ export function createGraphRunner(options: GraphRunnerOptions): GraphRunner {
     };
   };
 
+  /**
+   * 重新打开已有会话：业务状态从 store 读，未决确认卡从 LangGraph checkpoint 读。
+   * 会话不存在时直接抛错，不返回半成品 RunState。
+   */
+  const openSession = async (sessionIdToOpen: string): Promise<RunState> => {
+    if (!service.hasSession(sessionIdToOpen)) {
+      throw new AppError("VALIDATION", `会话不存在：${sessionIdToOpen}`, "用 /list 查看可用会话");
+    }
+    sessionId = sessionIdToOpen;
+    output.outlinePath = null;
+    output.draftPath = null;
+    output.exportedPath = null;
+
+    const snapshotState = await graph.getState(threadConfig(sessionIdToOpen));
+    const gate =
+      snapshotState.tasks
+        .flatMap((task) => task.interrupts ?? [])
+        .map((item) => item.value as ConfirmationPackage)[0] ?? null;
+    pendingGate = gate;
+    const session = service.getSession(sessionIdToOpen);
+    if (gate === null) {
+      return { status: "exported", session, gate: null, output: snapshot(), error: null };
+    }
+    return { status: "awaiting_confirmation", session, gate, output: snapshot(), error: null };
+  };
+
   const start = async (input: StartInput): Promise<RunState> => {
     const session = service.createSession({
       title: input.topic,
@@ -114,6 +146,7 @@ export function createGraphRunner(options: GraphRunnerOptions): GraphRunner {
       finalArtifact: null,
       outlineFilePath: null,
       draftFilePath: null,
+      draftFileHash: null,
       exportedFilePath: null,
       next: "intake",
     };
@@ -160,5 +193,5 @@ export function createGraphRunner(options: GraphRunnerOptions): GraphRunner {
     }
   };
 
-  return { start, resume };
+  return { start, resume, openSession, listSessions: () => service.listSessions() };
 }

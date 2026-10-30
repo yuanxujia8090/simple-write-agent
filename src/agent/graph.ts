@@ -9,9 +9,11 @@ import {
   START,
   StateGraph,
   interrupt,
+  type BaseCheckpointSaver,
 } from "@langchain/langgraph";
 
 import type { FileWriter } from "../domain/files.js";
+import type { CheckpointPort } from "../domain/store.js";
 import { gatesForMode, rollbackStageFor } from "../domain/gates.js";
 import type { ConfirmationPackage, WorkflowService } from "../domain/service.js";
 import type {
@@ -29,6 +31,7 @@ import type {
   Stage,
   ThesisContent,
 } from "../domain/types.js";
+import { AppError } from "../shared/errors.js";
 import { fixedModel, type WritingModel } from "./fixed-model.js";
 
 /** 节点顺序即流程顺序；门禁节点的条件边也复用这份名称集合。 */
@@ -62,7 +65,7 @@ const STAGE_NODES: Partial<Record<Stage, FlowNode>> = {
 export type ArtifactRef = { id: string; hash: string };
 
 /** 生成节点的产出：指纹进状态用于门禁核对，内容供下游节点使用。 */
-export type Generated<Content> = { ref: ArtifactRef; content: Content };
+export type Generated<Content> = { ref: ArtifactRef; content: Content; fileHash: string | null };
 
 /** 产出一旦生成就覆盖旧槽位；未生成的槽位读到 null。 */
 function slot<Value>(initial: Value) {
@@ -90,6 +93,7 @@ const WritingState = Annotation.Root({
   finalArtifact: slot<Generated<FinalContent> | null>(null),
   outlineFilePath: slot<string | null>(null),
   draftFilePath: slot<string | null>(null),
+  draftFileHash: slot<string | null>(null),
   exportedFilePath: slot<string | null>(null),
   next: slot<FlowNode>("intake"),
 });
@@ -107,6 +111,10 @@ export type WritingGraphOptions = {
   service: WorkflowService;
   files: FileWriter;
   model?: WritingModel;
+  /** 默认进程内 MemorySaver；传 SqliteSaver 才能跨进程恢复。 */
+  checkpointer?: BaseCheckpointSaver;
+  /** 提供后，门禁提交会把稳定 checkpoint 与业务状态写进同一事务。 */
+  checkpoints?: CheckpointPort;
 };
 
 function requireGenerated<Content>(
@@ -138,6 +146,8 @@ function renderOutlineMarkdown(outline: OutlineContent): string {
 export function createWritingGraph(options: WritingGraphOptions) {
   const { service, files } = options;
   const model = options.model ?? fixedModel;
+  const checkpointer = options.checkpointer ?? new MemorySaver();
+  const checkpoints = options.checkpoints;
 
   const save = <Content extends ArtifactContent>(
     sessionId: string,
@@ -145,15 +155,17 @@ export function createWritingGraph(options: WritingGraphOptions) {
     content: Content,
     parent: ArtifactRef | null,
     filePath: string | null = null,
+    fileHash: string | null = null,
   ): Generated<Content> => {
     const artifact = service.saveTemporaryArtifact({
       sessionId,
       kind,
       content,
       filePath,
+      fileHash,
       parentArtifactId: parent?.id ?? null,
     });
-    return { ref: { id: artifact.id, hash: artifact.contentHash }, content };
+    return { ref: { id: artifact.id, hash: artifact.contentHash }, content, fileHash };
   };
 
   /**
@@ -162,11 +174,11 @@ export function createWritingGraph(options: WritingGraphOptions) {
    * LangGraph 恢复时会从节点开头重跑，因此本节点的 `requestGate` 会被调用两次，
    * 提交用的是第二次（也就是恢复时）取得的确认卡；服务侧必须让该调用保持只读或幂等。
    */
-  const gateStep = (
+  const gateStep = async (
     state: WritingGraphState,
     gateId: GateId,
     approvedNext: FlowNode,
-  ): { next: FlowNode } => {
+  ): Promise<{ next: FlowNode }> => {
     // review 阶段同时有事实核查与终稿两个门禁，gateForStage 只会返回第一个，
     // 因此按 gateId 在当前模式的门禁集合里精确查找，跳过与否都由模式定义决定。
     const enabledGate = gatesForMode(state.mode).find((gate) => gate.id === gateId);
@@ -176,6 +188,9 @@ export function createWritingGraph(options: WritingGraphOptions) {
 
     const confirmation = service.requestGate(state.sessionId, gateId);
     const resume = interrupt<ConfirmationPackage, GateResume>(confirmation);
+    // 恢复后只在这里取一次稳定 checkpoint：序列化在事务外完成，写入与业务行同事务。
+    const checkpoint =
+      checkpoints === undefined ? null : await checkpoints.prepare(state.sessionId);
     service.commitGateDecision({
       sessionId: state.sessionId,
       gateId,
@@ -185,6 +200,7 @@ export function createWritingGraph(options: WritingGraphOptions) {
       decision: resume.decision,
       ...(resume.feedback === undefined ? {} : { feedback: resume.feedback }),
       ...(resume.directives === undefined ? {} : { directives: resume.directives }),
+      checkpoint,
     });
 
     const approved = resume.decision === "approve" || resume.decision === "approve_alternative";
@@ -232,7 +248,14 @@ export function createWritingGraph(options: WritingGraphOptions) {
       markdown: renderOutlineMarkdown(content),
     });
     return {
-      outlineArtifact: save(state.sessionId, "outline", content, thesisArtifact.ref, file.path),
+      outlineArtifact: save(
+        state.sessionId,
+        "outline",
+        content,
+        thesisArtifact.ref,
+        file.path,
+        file.hash,
+      ),
       outlineFilePath: file.path,
     };
   };
@@ -252,8 +275,16 @@ export function createWritingGraph(options: WritingGraphOptions) {
       markdown: content.markdown,
     });
     return {
-      draftArtifact: save(state.sessionId, "draft", content, outlineArtifact.ref, file.path),
+      draftArtifact: save(
+        state.sessionId,
+        "draft",
+        content,
+        outlineArtifact.ref,
+        file.path,
+        file.hash,
+      ),
       draftFilePath: file.path,
+      draftFileHash: file.hash,
     };
   };
 
@@ -285,10 +316,33 @@ export function createWritingGraph(options: WritingGraphOptions) {
 
   const factGate = (state: WritingGraphState) => gateStep(state, "fact_report", "finalGate");
 
-  const finalGate = (state: WritingGraphState) => gateStep(state, "final", "export");
+  /**
+   * 外部编辑检测：磁盘主稿与本会话记录的文件指纹不一致时，不覆盖用户改动。
+   * 门禁前也检查一次：确认的是磁盘上那份稿子，改了就不该按旧确认推进。
+   */
+  const verifyDraftUnchanged = (state: WritingGraphState): void => {
+    if (state.draftFilePath === null || state.draftFileHash === null) {
+      return;
+    }
+    const onDisk = files.readHash(state.draftFilePath);
+    if (onDisk !== state.draftFileHash) {
+      throw new AppError(
+        "VALIDATION",
+        `主稿已被外部修改，未覆盖：${state.draftFilePath}`,
+        "保留或另存你的改动后重新确认；本次没有写入任何文件",
+      );
+    }
+  };
+
+  const finalGate = (state: WritingGraphState) => {
+    verifyDraftUnchanged(state);
+    return gateStep(state, "final", "export");
+  };
 
   const exportFinal = (state: WritingGraphState) => {
     const final = requireGenerated(state.finalArtifact, "终稿");
+    // 最后一道防线：门禁到导出之间文件仍可能被改。
+    verifyDraftUnchanged(state);
     const file = files.exportMarkdown({
       workspaceRoot: state.workspaceRoot,
       title: final.content.title,
@@ -331,5 +385,5 @@ export function createWritingGraph(options: WritingGraphOptions) {
     .addConditionalEdges("factGate", (state) => state.next, FLOW_NODE_LIST)
     .addConditionalEdges("finalGate", (state) => state.next, FLOW_NODE_LIST)
     .addEdge("export", END)
-    .compile({ checkpointer: new MemorySaver() });
+    .compile({ checkpointer });
 }

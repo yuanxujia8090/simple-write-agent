@@ -1,6 +1,7 @@
 /**
- * 工作流状态服务（内存实现）：阶段、产出版本、门禁记录和 Trace 的唯一写入者。
- * 提交决定在深拷贝上完成，全部步骤成功后才整体替换会话，保证失败不留部分状态。
+ * 工作流状态服务：阶段、产出版本、门禁记录和 Trace 的唯一写入者。
+ * 提交决定在深拷贝上完成，全部步骤成功后才整份落库，保证失败不留部分状态。
+ * 存储由 `WorkflowStore` 提供（内存或 SQLite），本文件不含任何数据库细节。
  */
 import { randomUUID } from "node:crypto";
 
@@ -8,6 +9,7 @@ import type { ValidationResult } from "../domain/contracts.js";
 import { validateArtifact } from "../domain/contracts.js";
 import type { GateDefinition } from "../domain/gates.js";
 import { gateById, rollbackStageFor, stageAfterApprove } from "../domain/gates.js";
+import type { WorkflowStore } from "../domain/store.js";
 import type {
   CommitDecisionInput,
   CommitDecisionResult,
@@ -36,6 +38,7 @@ import type {
 } from "../domain/types.js";
 import { AppError } from "../shared/errors.js";
 import { hashContent } from "../shared/hash.js";
+import { createMemoryStore } from "./memory-store.js";
 
 const DEFAULT_SESSION_NAME = "未命名会话";
 
@@ -184,20 +187,32 @@ function isApprove(decision: GateDecision): boolean {
   return decision === "approve" || decision === "approve_alternative";
 }
 
-export function createInMemoryWorkflowService(options: {
+export type WorkflowServiceOptions = {
+  store: WorkflowStore;
   createId?: () => string;
   now?: () => string;
-} = {}): WorkflowService {
+};
+
+/** 业务实现；`store` 决定数据落在内存还是 SQLite。 */
+export function createWorkflowService(options: WorkflowServiceOptions): WorkflowService {
+  const { store } = options;
   const createId = options.createId ?? randomUUID;
   const now = options.now ?? (() => new Date().toISOString());
-  const sessions = new Map<string, SessionState>();
 
   function requireSession(sessionId: string): SessionState {
-    const session = sessions.get(sessionId);
-    if (session === undefined) {
+    const session = store.loadSession(sessionId);
+    if (session === null) {
       throw new AppError("VALIDATION", `会话不存在：${sessionId}`, "用 /list 查看可用会话");
     }
     return session;
+  }
+
+  function hasSession(sessionId: string): boolean {
+    return store.loadSession(sessionId) !== null;
+  }
+
+  function listSessions(): SessionState[] {
+    return store.listSessions();
   }
 
   function requireArtifact(session: SessionState, artifactId: string): ArtifactVersion {
@@ -224,12 +239,12 @@ export function createInMemoryWorkflowService(options: {
       trace: [],
       revisions: [],
     };
-    sessions.set(session.id, session);
+    store.saveSession(session);
     return deepCopy(session);
   }
 
   function getSession(sessionId: string): SessionState {
-    return deepCopy(requireSession(sessionId));
+    return requireSession(sessionId);
   }
 
   function saveTemporaryArtifact(input: SaveArtifactInput): ArtifactVersion {
@@ -253,6 +268,7 @@ export function createInMemoryWorkflowService(options: {
       content: deepCopy(input.content),
       contentHash: hashContent(input.content),
       filePath: input.filePath ?? null,
+      fileHash: input.fileHash ?? null,
       parentArtifactId: input.parentArtifactId ?? null,
       createdAt: at,
       decidedAt: null,
@@ -262,6 +278,7 @@ export function createInMemoryWorkflowService(options: {
     addTrace(session, at, "artifact_generated", `${input.kind} v${version} 已生成，等待确认`, {
       artifactId: artifact.id,
     });
+    store.saveSession(session);
     return deepCopy(artifact);
   }
 
@@ -292,6 +309,7 @@ export function createInMemoryWorkflowService(options: {
       artifactId: artifact.id,
       gateId,
     });
+    store.saveSession(session);
     return {
       sessionId: session.id,
       gateId,
@@ -437,7 +455,8 @@ export function createInMemoryWorkflowService(options: {
     }
 
     work.updatedAt = at;
-    sessions.set(work.id, work);
+    // 一次事务：业务行 + 稳定 checkpoint 行一起可见（ADR 0012）。
+    store.saveSession(work, input.checkpoint ?? null);
     return { status: "applied" as const, stage: work.stage, session: deepCopy(work) };
   }
 
@@ -449,15 +468,25 @@ export function createInMemoryWorkflowService(options: {
       artifactId: artifact.id,
     });
     session.updatedAt = at;
+    store.saveSession(session);
     return deepCopy(session);
   }
 
   return {
     createSession,
     getSession,
+    hasSession,
+    listSessions,
     saveTemporaryArtifact,
     requestGate,
     commitGateDecision,
     recordExport,
   };
+}
+
+/** 测试与重放默认入口：内存存储 + 同一套业务规则。 */
+export function createInMemoryWorkflowService(
+  options: { createId?: () => string; now?: () => string } = {},
+): WorkflowService {
+  return createWorkflowService({ store: createMemoryStore(), ...options });
 }

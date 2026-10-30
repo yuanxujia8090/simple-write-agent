@@ -1,3 +1,4 @@
+import type { PreparedCheckpoint } from "./store.js";
 import type {
   ArtifactContent,
   ArtifactKind,
@@ -23,6 +24,8 @@ export type SaveArtifactInput = {
   kind: ArtifactKind;
   content: ArtifactContent;
   filePath?: string | null;
+  /** 落盘文件内容指纹，与 `filePath` 一起记录。 */
+  fileHash?: string | null;
   parentArtifactId?: string | null;
   now?: string;
 };
@@ -56,6 +59,8 @@ export type CommitDecisionInput = {
   directives?: string[];
   /** 测试用的故障注入点：在这些步骤之后抛错，验证全量回滚。 */
   failAfter?: "artifact" | "gate" | "stage" | "trace";
+  /** 稳定 checkpoint 行：与业务状态进入同一个事务（ADR 0012）。 */
+  checkpoint?: PreparedCheckpoint | null;
   now?: string;
 };
 
@@ -80,6 +85,10 @@ export type RecordExportInput = {
 export interface WorkflowService {
   createSession(input: CreateSessionInput): SessionState;
   getSession(sessionId: string): SessionState;
+  /** 是否已有该会话；用于恢复入口判断，不抛错。 */
+  hasSession(sessionId: string): boolean;
+  /** 未完成会话优先：按更新时间倒序。 */
+  listSessions(): SessionState[];
   /** 保存临时产物；同种类旧 temporary 被替换（旧临时版本不再保留）。 */
   saveTemporaryArtifact(input: SaveArtifactInput): ArtifactVersion;
   /** 为门禁生成确认卡；产物必须存在且通过契约校验。 */
@@ -122,6 +131,13 @@ export type RunState = {
 export interface GraphRunner {
   start(input: StartInput): Promise<RunState>;
   resume(input: DecisionInput): Promise<RunState>;
+  /**
+   * 重新打开一个已有会话：新进程里从 checkpoint 取回未决确认卡。
+   * 没有未决门禁时返回 `exported`（已导出的会话）。
+   */
+  openSession(sessionId: string): Promise<RunState>;
+  /** 会话列表，按更新时间倒序；供 `/list` 与恢复入口使用。 */
+  listSessions(): SessionState[];
 }
 
 /** 修订指令的统一组装，避免各处自造字段。 */

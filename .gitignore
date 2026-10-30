@@ -23,3 +23,6 @@ coverage/
 # 运行产物
 articles/
 outlines/
+
+# pi 会话本地状态
+.pi/

@@ -86,6 +86,8 @@ function createFakeService(options: { failGate?: GateId } = {}): FakeService {
       return session;
     },
     getSession,
+    hasSession: (sessionId) => sessions.has(sessionId),
+    listSessions: () => [...sessions.values()],
     saveTemporaryArtifact(input) {
       saved.push(input);
       const session = getSession(input.sessionId);
@@ -101,6 +103,7 @@ function createFakeService(options: { failGate?: GateId } = {}): FakeService {
         content: input.content,
         contentHash: hashContent(input.content),
         filePath: input.filePath ?? null,
+        fileHash: input.fileHash ?? null,
         parentArtifactId: input.parentArtifactId ?? null,
         createdAt: at(),
         decidedAt: null,
@@ -209,6 +212,12 @@ function createFakeWriter(): FakeWriter {
         const written = write(input, "exports", ".md");
         exports.push({ input, written });
         return written;
+      },
+      readHash(path) {
+        const recorded = [...outlines, ...drafts, ...exports].find(
+          (item) => item.written.path === path,
+        );
+        return recorded?.written.hash ?? null;
       },
     },
     outlines,

@@ -1,16 +1,18 @@
-/** 重放命令入口：`npm run replay -- [--workspace <目录>] [--scenario basic|revise|reject]`。 */
+/** 重放命令入口：`npm run replay -- [--workspace <目录>] [--scenario basic|revise|reject] [--mode normal|fast] [--db <库文件>]`。 */
 import { parseArgs } from "node:util";
 
 import { defaultWorkspace, formatResult, runReplay, type ReplayScenario } from "./replay.js";
 
 async function main(): Promise<number> {
-  let values: { workspace?: string; scenario?: string; help?: boolean };
+  let values: { workspace?: string; scenario?: string; mode?: string; db?: string; help?: boolean };
   try {
     const parsed = parseArgs({
       args: process.argv.slice(2),
       options: {
         workspace: { type: "string" },
         scenario: { type: "string" },
+        mode: { type: "string" },
+        db: { type: "string" },
         help: { type: "boolean", short: "h" },
       },
       allowPositionals: false,
@@ -19,7 +21,9 @@ async function main(): Promise<number> {
     values = parsed.values;
   } catch (error) {
     process.stderr.write(`参数无法识别：${error instanceof Error ? error.message : String(error)}\n`);
-    process.stderr.write("用法：npm run replay -- [--workspace <目录>] [--scenario basic|revise|reject]\n");
+    process.stderr.write(
+      "用法：npm run replay -- [--workspace <目录>] [--scenario basic|revise|reject] [--mode normal|fast] [--db <库文件>]\n",
+    );
     return 1;
   }
 
@@ -32,6 +36,8 @@ async function main(): Promise<number> {
         "",
         "  --workspace <目录>   产物写入目录；默认在系统临时目录新建一个",
         "  --scenario <名称>    basic（全部批准，默认）| revise（论点修改一次）| reject（终稿拒绝一次）",
+        "  --mode <模式>        normal（默认，5 道门禁）| fast（只保留论点和终稿）",
+        "  --db <库文件>        写入 SQLite 库文件；不传则只用内存，进程退出即丢",
       ].join("\n") + "\n",
     );
     return 0;
@@ -43,9 +49,20 @@ async function main(): Promise<number> {
     return 1;
   }
 
+  const modeValue = values.mode ?? "normal";
+  if (modeValue !== "normal" && modeValue !== "fast") {
+    process.stderr.write(`未知模式：${modeValue}；可选 normal、fast\n`);
+    return 1;
+  }
+
   const workspaceRoot = values.workspace ?? defaultWorkspace();
   try {
-    const result = await runReplay({ workspaceRoot, scenario: scenario as ReplayScenario });
+    const result = await runReplay({
+      workspaceRoot,
+      scenario: scenario as ReplayScenario,
+      mode: modeValue,
+      ...(values.db === undefined ? {} : { dbPath: values.db }),
+    });
     process.stdout.write(`${formatResult(result)}\n`);
     if (result.status !== "exported") {
       process.stderr.write(`重放未走到导出：${result.error ?? result.status}\n`);

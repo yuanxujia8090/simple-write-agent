@@ -121,6 +121,11 @@ export type ArtifactVersion = {
   contentHash: string;
   /** 落盘产物才有；内存结构化产物为 null。 */
   filePath: string | null;
+  /**
+   * 落盘文件内容的指纹（含结尾换行），用于和磁盘现状比对；
+   * 与 `contentHash`（结构化内容指纹）分开：前者对文件，后者对确认卡。
+   */
+  fileHash: string | null;
   /** 上游产物（如大纲引用论点的 artifactId），没有则 null。 */
   parentArtifactId: string | null;
   createdAt: string;

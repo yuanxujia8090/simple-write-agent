@@ -40,4 +40,6 @@ export interface FileWriter {
   writeOutline(input: WriteOutlineInput): WrittenFile;
   writeDraft(input: WriteDraftInput): WrittenFile;
   exportMarkdown(input: ExportMarkdownInput): WrittenFile;
+  /** 读磁盘当前内容指纹；文件不存在返回 null。用于外部编辑检测。 */
+  readHash(path: string): string | null;
 }

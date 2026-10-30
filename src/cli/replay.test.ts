@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { FIXED_DOWNGRADED_CLAIM } from "../agent/fixed-model.js";
 import { createGraphRunner } from "../agent/runner.js";
 import { createFileWriter } from "../artifacts/files.js";
+import { createPersistentRuntime } from "../runtime.js";
 import { createInMemoryWorkflowService } from "../workflow/service.js";
 import { runReplay } from "./replay.js";
 
@@ -87,6 +88,38 @@ describe("首条写作闭环重放", () => {
     expect(finals.some((item) => item.status === "draft")).toBe(true);
     // 终稿是降级改写后的版本：未核实的外部断言被改写成保留怀疑的表述
     expect(readText(result.output.exportedPath!)).toContain(FIXED_DOWNGRADED_CLAIM);
+  });
+});
+
+describe("快速模式与持久化库", () => {
+  it("快速模式只保留论点和终稿两道门禁", async () => {
+    const root = makeRoot();
+    const result = await runReplay({ workspaceRoot: root, scenario: "basic", mode: "fast" });
+
+    expect(result.status).toBe("exported");
+    expect(result.mode).toBe("fast");
+    expect(result.gates.map((gate) => gate.gateId)).toEqual(["thesis", "final"]);
+    expect(readText(result.output.exportedPath!).length).toBeGreaterThan(1500);
+  });
+
+  it("传入库文件时会话落到 SQLite，并能在新连接里读回", async () => {
+    const root = makeRoot();
+    const dbPath = join(root, "session.db");
+    const result = await runReplay({ workspaceRoot: root, scenario: "basic", dbPath });
+
+    expect(result.dbPath).toBe(dbPath);
+    expect(result.status).toBe("exported");
+
+    const reloaded = createPersistentRuntime({ dbPath });
+    try {
+      const sessions = reloaded.service.listSessions();
+      expect(sessions.map((session) => session.id)).toEqual([result.sessionId]);
+      expect(sessions[0]?.stage).toBe("exported");
+      expect(sessions[0]?.gates).toHaveLength(5);
+      expect(sessions[0]?.artifacts.some((item) => item.fileHash !== null)).toBe(true);
+    } finally {
+      reloaded.close();
+    }
   });
 });
 

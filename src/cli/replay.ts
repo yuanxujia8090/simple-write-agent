@@ -13,6 +13,8 @@ import type {
   RunOutput,
   RunState,
 } from "../domain/service.js";
+import type { SessionMode } from "../domain/types.js";
+import { createPersistentRuntime } from "../runtime.js";
 import { createInMemoryWorkflowService } from "../workflow/service.js";
 
 export type ReplayScenario = "basic" | "revise" | "reject";
@@ -29,12 +31,18 @@ export type GateLog = {
 export type ReplayOptions = {
   workspaceRoot: string;
   scenario?: ReplayScenario;
+  /** 传入时改用 SQLite 持久化；测试一律用临时目录。 */
+  dbPath?: string;
+  mode?: SessionMode;
   /** 测试用：注入固定时间，避免快照和排序抖动。 */
   now?: () => string;
 };
 
 export type ReplayResult = {
   scenario: ReplayScenario;
+  mode: SessionMode;
+  /** 有持久化库时给出库文件路径，便于二次打开核对。 */
+  dbPath: string | null;
   sessionId: string;
   status: RunState["status"];
   stage: string;
@@ -101,8 +109,23 @@ export async function runReplay(options: ReplayOptions): Promise<ReplayResult> {
   const workspaceRoot = options.workspaceRoot;
   mkdirSync(workspaceRoot, { recursive: true });
 
-  const service = createInMemoryWorkflowService(options.now ? { now: options.now } : {});
-  const runner: GraphRunner = createGraphRunner({ service, files: createFileWriter() });
+  const mode = options.mode ?? "normal";
+  const now = options.now;
+  const inMemory = () => {
+    const service = createInMemoryWorkflowService(now ? { now } : {});
+    return {
+      runner: createGraphRunner({ service, files: createFileWriter() }) as GraphRunner,
+      close: () => undefined,
+    };
+  };
+  const runtime =
+    options.dbPath === undefined
+      ? inMemory()
+      : createPersistentRuntime({
+          dbPath: options.dbPath,
+          ...(now === undefined ? {} : { now }),
+        });
+  const runner = runtime.runner;
 
   const gates: GateLog[] = [];
   const seen = { modified: new Set<string>(), rejected: new Set<string>() };
@@ -110,7 +133,7 @@ export async function runReplay(options: ReplayOptions): Promise<ReplayResult> {
   let state = await runner.start({
     topic: TOPIC,
     materials: MATERIALS,
-    mode: "normal",
+    mode,
     workspace: { root: workspaceRoot, workspaceId: "ws-replay" },
   });
 
@@ -126,9 +149,12 @@ export async function runReplay(options: ReplayOptions): Promise<ReplayResult> {
   }
 
   const session = state.session;
-  return {
-    scenario,
-    sessionId: session.id,
+  try {
+    return {
+      scenario,
+      mode,
+      dbPath: options.dbPath ?? null,
+      sessionId: session.id,
     status: state.status,
     stage: session.stage,
     gates,
@@ -140,8 +166,11 @@ export async function runReplay(options: ReplayOptions): Promise<ReplayResult> {
       status: artifact.status,
       version: artifact.version,
     })),
-    error: state.error,
-  };
+      error: state.error,
+    };
+  } finally {
+    runtime.close();
+  }
 }
 
 export function defaultWorkspace(): string {
@@ -151,7 +180,7 @@ export function defaultWorkspace(): string {
 
 export function formatResult(result: ReplayResult): string {
   const lines = [
-    `写作闭环重放（场景：${result.scenario}）`,
+    `写作闭环重放（场景：${result.scenario}，模式：${result.mode}${result.dbPath === null ? "" : "，SQLite 持久化"}）`,
     "",
     ...result.gates.map((gate, index) => {
       const decisionLabel: Record<string, string> = {

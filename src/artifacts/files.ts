@@ -111,6 +111,18 @@ export function createFileWriter(): FileWriter {
         fileNameFor: (slug) => `${slug}${MARKDOWN_EXTENSION}`,
       });
     },
+
+    /** 与写入时同一套指纹算法（含结尾换行规则），用于外部编辑检测。 */
+    readHash(path: string): string | null {
+      try {
+        return hashContent(readFileSync(path, "utf8"));
+      } catch (error) {
+        if (isErrno(error, "ENOENT")) {
+          return null;
+        }
+        throw asWriteError(error, path);
+      }
+    },
   };
 }
 
