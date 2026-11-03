@@ -1,7 +1,7 @@
 # 阶段方案：CLI 素材→主稿最小路径
 
 - 日期：2026-11-03
-- 状态：设计中（未编码）
+- 状态：已实现（T4）
 - 关联计划：`hermes-out/CEO-复盘/plans/2026-11-03-my-write-agent.md` §2.1 / §3
 - 关联已有：`2026-10-29-first-writing-loop.md`（graph/replay）、`2026-10-30-model-adapter.md`、`2026-10-30-persistence-file-protection.md`、`2026-11-03-multi-style-loader.md`
 - 目标一句话：一条 CLI 给素材（可选话题 + 风格）能接到现有编排，产出主稿 Markdown（及已有 HTML 导出能力）
@@ -85,7 +85,7 @@ parseCliArgs
 
 ## 7. 实际结果
 
-（收尾时补。）
+CLI `runCli` 在存在 `--file`/`--topic` 时读素材、装配 GraphRunner（无 Key 用 fixedModel）、非交互自动批准至 exported；帮助与根 README 含一条 ` --file ./notes.md --topic "测" --fast` 示例。验证见 hermes-out T4 证据。
 
 ## 8. Subtract / 懒惰协议
 
