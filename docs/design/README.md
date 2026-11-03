@@ -8,8 +8,8 @@
 
 | 日期 | 阶段 | 方案文档 | 变更记录 | 状态 |
 | --- | --- | --- | --- | --- |
-| 2026-11-03 | 多风格本地加载 | [方案](2026-11-03-multi-style-loader.md) | 未开工 | 设计中 |
-| 2026-11-03 | CLI 素材→主稿最小路径 | [方案](2026-11-03-cli-material-to-draft.md) | 未开工 | 设计中 |
+| 2026-11-03 | 多风格本地加载 | [方案](2026-11-03-multi-style-loader.md) | [变更](../changes/2026-11-03-multi-style-loader.md) | 已完成 |
+| 2026-11-03 | CLI 素材→主稿最小路径 | [方案](2026-11-03-cli-material-to-draft.md) | [变更](../changes/2026-11-03-cli-material-to-draft.md) | 已完成 |
 | 2026-10-30 | 真实模型适配与本地配置入口 | [方案](2026-10-30-model-adapter.md) | [变更](../changes/2026-10-30-model-adapter.md) | 已完成（烟测待跑） |
 | 2026-10-30 | 主题配置与确定性 HTML 导出 | [方案](2026-10-30-theme-html-export.md) | [变更](../changes/2026-10-30-theme-html-export.md) | 已完成 |
 | 2026-10-30 | 持久化与文件保护闭环 | [方案](2026-10-30-persistence-file-protection.md) | [变更](../changes/2026-10-30-persistence-file-protection.md) | 已完成 |
