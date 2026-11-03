@@ -30,3 +30,13 @@ outlines/
 # 本地环境变量（含真实模型密钥，不提交）
 .env.local
 .env
+
+# 本地写作风格包（真人语气正文不进 git）
+# 仓内只提交 styles/README.md 与无私人语气的 styles/_example/
+styles/*
+!styles/README.md
+!styles/_example/
+!styles/_example/**
+
+# 误拷进工作树的风格指南全文副本
+**/style-guide*.md
