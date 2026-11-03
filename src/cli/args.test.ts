@@ -54,3 +54,9 @@ describe("parseCliArgs", () => {
     expect(() => parseCliArgs(["--topic"])).toThrow(AppError);
   });
 });
+
+  it("解析 --style", () => {
+    const options = parseCliArgs(["--style", "demo"]);
+    expect(options.style).toBe("demo");
+  });
+

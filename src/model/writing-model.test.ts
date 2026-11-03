@@ -210,4 +210,19 @@ describe("模型配置校验", () => {
       /暂不支持的模型接口类型/,
     );
   });
+
+  it("指定 styleProfile 后 system 含风格正文", async () => {
+    const { chat, recorded } = createFakeChat(responder);
+    const styleProfile = {
+      id: "demo",
+      rootDir: "/tmp/demo",
+      entryPath: "/tmp/demo/profile.md",
+      bodyText: "STYLE_INJECT_MARKER\n短句优先",
+    };
+    const model = createAiWritingModel({ chat, styleProfile });
+    await model.brief({ topic: "测" });
+    expect(recorded[0]?.request.system).toContain("STYLE_INJECT_MARKER");
+    expect(recorded[0]?.request.system).toContain("写作风格包（demo）");
+  });
+
 });

@@ -18,6 +18,7 @@ import type {
   WorkflowService,
 } from "../domain/service.js";
 import type { WritingModel } from "./fixed-model.js";
+import type { StyleProfile } from "../style/index.js";
 import { createWritingGraph, type WritingGraphState } from "./graph.js";
 
 export type GraphRunnerOptions = {
@@ -30,6 +31,8 @@ export type GraphRunnerOptions = {
   checkpoints?: CheckpointPort;
   /** 导出 HTML 用主题；不传用内置默认主题。 */
   theme?: Theme;
+  /** 本地风格包；暴露给装配方，真实模型应在 createAiWritingModel 时注入同一份。 */
+  styleProfile?: StyleProfile | null;
 };
 
 function errorMessage(error: unknown): string {
@@ -37,8 +40,16 @@ function errorMessage(error: unknown): string {
   return `写作流程执行失败：${detail}`;
 }
 
+const runnerStyleProfiles = new WeakMap<GraphRunner, StyleProfile | null>();
+
+/** 读取装配时绑定的风格包；未指定时为 null。 */
+export function getRunnerStyleProfile(runner: GraphRunner): StyleProfile | null {
+  return runnerStyleProfiles.get(runner) ?? null;
+}
+
 export function createGraphRunner(options: GraphRunnerOptions): GraphRunner {
   const { service } = options;
+  const styleProfile = options.styleProfile ?? null;
   const graph = createWritingGraph(options);
 
   let sessionId: string | null = null;
@@ -210,5 +221,12 @@ export function createGraphRunner(options: GraphRunnerOptions): GraphRunner {
     }
   };
 
-  return { start, resume, openSession, listSessions: () => service.listSessions() };
+  const runner: GraphRunner = {
+    start,
+    resume,
+    openSession,
+    listSessions: () => service.listSessions(),
+  };
+  runnerStyleProfiles.set(runner, styleProfile);
+  return runner;
 }

@@ -6,6 +6,7 @@ export type CliOptions = {
   topic: string | undefined;
   files: string[];
   theme: string | undefined;
+  style: string | undefined;
   cwd: string | undefined;
   outputDir: string | undefined;
   fast: boolean;
@@ -18,6 +19,7 @@ export const defaultCliOptions: CliOptions = {
   topic: undefined,
   files: [],
   theme: undefined,
+  style: undefined,
   cwd: undefined,
   outputDir: undefined,
   fast: false,
@@ -30,6 +32,7 @@ const PARSE_CONFIG = {
   topic: { type: "string" },
   file: { type: "string", multiple: true },
   theme: { type: "string" },
+  style: { type: "string" },
   cwd: { type: "string" },
   "output-dir": { type: "string" },
   fast: { type: "boolean" },
@@ -91,6 +94,7 @@ export function parseCliArgs(argv: readonly string[]): CliOptions {
     topic: str("topic"),
     files,
     theme: str("theme"),
+    style: str("style"),
     cwd: str("cwd"),
     outputDir: str("output-dir"),
     fast: bool("fast"),

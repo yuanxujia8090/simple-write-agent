@@ -13,6 +13,7 @@ import type {
   ThesisContent,
 } from "../domain/types.js";
 import type { ChatPort } from "./chat.js";
+import { appendStyleToSystem, type StyleProfile } from "../style/index.js";
 import type {
   BriefInput,
   DraftInput,
@@ -135,11 +136,14 @@ export type AiWritingModelOptions = {
   chat: ChatPort;
   /** 采样温度：结构化阶段偏低，草稿阶段可略高。 */
   temperature?: number;
+  /** 本地风格包；注入到 system 提示，不进 git。 */
+  styleProfile?: StyleProfile | null;
 };
 
 export function createAiWritingModel(options: AiWritingModelOptions): WritingModel {
   const { chat } = options;
   const temperature = options.temperature ?? 0.4;
+  const system = appendStyleToSystem(SYSTEM, options.styleProfile);
 
   const ask = async <T>(request: {
     prompt: string;
@@ -147,7 +151,7 @@ export function createAiWritingModel(options: AiWritingModelOptions): WritingMod
     schemaName: string;
   }): Promise<T> => {
     const result = await chat.generateObject({
-      system: SYSTEM,
+      system,
       prompt: request.prompt,
       schema: request.schema,
       schemaName: request.schemaName,

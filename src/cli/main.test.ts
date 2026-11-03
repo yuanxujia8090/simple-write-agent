@@ -133,4 +133,51 @@ describe("runCli", () => {
     expect(text).toContain("ws-test-1");
     expect(text).toContain("向上找到 .writing-agent 标记");
   });
+
+  it("--style 读到本地包并打印风格摘要", async () => {
+    const pack = join(homeDir, ".writing-agent", "styles", "demo");
+    await mkdir(pack, { recursive: true });
+    await writeFile(join(pack, "profile.md"), "CLI_STYLE_MARKER", "utf8");
+    const result = run(["--style", "demo"]);
+    expect(result.code).toBe(0);
+    expect(result.out).toContain("风格包：demo");
+    expect(result.out).toContain(pack);
+    expect(result.err).toBe("");
+  });
+
+  it("--style 优先于 WRITING_AGENT_STYLE", async () => {
+    const cliPack = join(homeDir, ".writing-agent", "styles", "cli-pack");
+    const envPack = join(homeDir, ".writing-agent", "styles", "env-pack");
+    await mkdir(cliPack, { recursive: true });
+    await mkdir(envPack, { recursive: true });
+    await writeFile(join(cliPack, "profile.md"), "FROM_CLI", "utf8");
+    await writeFile(join(envPack, "profile.md"), "FROM_ENV", "utf8");
+    const result = run(["--style", "cli-pack"], { WRITING_AGENT_STYLE: "env-pack" });
+    expect(result.code).toBe(0);
+    expect(result.out).toContain("风格包：cli-pack");
+    expect(result.out).not.toContain("风格包：env-pack");
+  });
+
+  it("仅环境变量也可加载风格包", async () => {
+    const pack = join(homeDir, ".writing-agent", "styles", "env-only");
+    await mkdir(pack, { recursive: true });
+    await writeFile(join(pack, "profile.md"), "ENV_ONLY", "utf8");
+    const result = run([], { WRITING_AGENT_STYLE: "env-only" });
+    expect(result.code).toBe(0);
+    expect(result.out).toContain("风格包：env-only");
+  });
+
+  it("风格包缺失时返回用法错误", () => {
+    const result = run(["--style", "no-such-style"]);
+    expect(result.code).toBe(1);
+    expect(result.err).toContain("找不到风格包目录");
+    expect(result.err).toContain("profile.md");
+  });
+
+  it("--help 含 --style 说明", () => {
+    const result = run(["--help"]);
+    expect(result.code).toBe(0);
+    expect(result.out).toContain("--style");
+  });
+
 });

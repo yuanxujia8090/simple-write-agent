@@ -9,6 +9,7 @@ import { AppError, exitCodeFor } from "../shared/errors.js";
 import { resolveWorkspace, type Workspace } from "../workspace/index.js";
 import { type CliOptions, parseCliArgs } from "./args.js";
 import { helpText } from "./help.js";
+import { pickStyleRef, resolveStyleRef, type StyleProfile } from "../style/index.js";
 
 export type CliDeps = {
   cwd: string;
@@ -87,7 +88,7 @@ function describeConfig(config: AppConfig): string[] {
   return lines;
 }
 
-function describeInputs(options: CliOptions): string[] {
+function describeInputs(options: CliOptions, style: StyleProfile | null): string[] {
   const lines: string[] = [];
   if (options.topic) {
     lines.push(`话题：${options.topic}`);
@@ -97,6 +98,10 @@ function describeInputs(options: CliOptions): string[] {
   }
   if (options.theme) {
     lines.push(`主题：${options.theme}`);
+  }
+  if (style) {
+    lines.push(`风格包：${style.id}（${style.rootDir}）`);
+    lines.push(`  入口：${style.entryPath}`);
   }
   if (options.outputDir) {
     lines.push(`导出目录：${options.outputDir}`);
@@ -134,19 +139,24 @@ export function runCli(argv: readonly string[], overrides: Partial<CliDeps> = {}
 
   let workspace: Workspace;
   let config: AppConfig;
+  let style: StyleProfile | null = null;
   try {
     workspace = resolveWorkspace({
       cwd: deps.cwd,
       ...(options.cwd === undefined ? {} : { explicitCwd: options.cwd }),
     });
     config = loadConfig({ homeDir: deps.homeDir, env: deps.env });
+    const styleRef = pickStyleRef(options.style, deps.env.WRITING_AGENT_STYLE);
+    if (styleRef !== undefined) {
+      style = resolveStyleRef(styleRef, { homeDir: deps.homeDir, cwd: workspace.root });
+    }
   } catch (error) {
     reportError(error, deps.stderr);
     return exitCodeFor(error);
   }
 
   const lines = ["写作 Agent 启动检查", "", ...describeWorkspace(workspace), "", ...describeConfig(config)];
-  const inputs = describeInputs(options);
+  const inputs = describeInputs(options, style);
   if (inputs.length > 0) {
     lines.push("", ...inputs);
   }
