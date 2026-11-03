@@ -1,6 +1,6 @@
 # 本地写作风格包
 
-本目录**不**存放私人风格正文。真人语气、完整风格指南请装到本机目录，由 CLI 在运行时读取（见设计：`docs/design/2026-11-03-multi-style-loader.md`）。`--style` 加载实现属后续任务；此处只约定路径与包结构。
+本目录**不**存放私人风格正文。真人语气、完整风格指南请装到本机目录，由 CLI 在运行时读取（见设计：`docs/design/2026-11-03-multi-style-loader.md`）。运行时用 `--style <id|路径>` 或环境变量 `WRITING_AGENT_STYLE` 加载本地包（见 `src/style/`）；此处约定路径与包结构。
 
 ## 推荐安装位置
 
@@ -27,7 +27,7 @@
 ```bash
 mkdir -p ~/.writing-agent/styles/demo
 cp -R styles/_example/* ~/.writing-agent/styles/demo/
-# 编辑 ~/.writing-agent/styles/demo/profile.md 后，再用 CLI --style demo（待 T3）
+# 编辑 ~/.writing-agent/styles/demo/profile.md 后：writing-agent --file ./notes.md --style demo --fast
 ```
 
 ## Git 忽略规则
