@@ -242,6 +242,7 @@ _后续变更追加在最新日期下方，不删除历史记录。_
 - 真实模型兼容：结构化调用从 `generateObject`（依赖 `response_format`，OpenAI 兼容网关常不支持）改为 `generateText` + JSON Schema 提示 + JSON 提取 + zod 校验，失败重试一次；新增脏输出解析与本地假服务集成测试。[变更记录](2026-11-04-cli-usability-fixes.md)｜[阶段方案](../design/2026-11-04-cli-usability-fixes.md)
 - 门禁确认卡：终端下逐道门禁显示推荐/依据/风险/备选/预览，支持批准、修改、拒绝；非终端或 `--yes` 保持自动批准。
 - 工作区卫生：`.gitignore` 增加 `.writing-agent/`；删除与 `evidence/` 逐字相同的 `_selftest_2026-11-03/evidence.tgz`。
+- 真实 provider 端到端：`bai / deepseek-v4.1-flash` 上素材→主稿跑通（退出码 0、2 分钟、2 道门禁），11-03 的 `response_format` 报错不再出现。[运行记录](../runs/2026-11-04-bai-real-model.md)
 
 ## 2026-11-03
 

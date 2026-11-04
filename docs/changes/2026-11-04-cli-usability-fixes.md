@@ -38,7 +38,7 @@
 
 ## 未完成事项与风险
 
-- 真实 provider（`bai` / `deepseek-v4.1-flash`）端到端未跑：本机 `.env.local` 的 `WRITING_AGENT_MODEL_API_KEY` 为空，未擅自使用付费凭据。离线证据只证明「不再发 `response_format`、能解析脏输出」，不保证该模型一定按 JSON 输出。
-- 改动尚未提交（工作树保持未 commit 状态，由负责人按一功能一 commit 决定拆分）。
+- 真实 provider 端到端已于同日补齐（负责人填入 `.env.local` 凭据后实测）：`node dist/cli.js --file … --fast --yes` → 退出码 0、`创作结果：exported`、2 道门禁、2 分钟、主稿 2103 中文字并导出 HTML。详见 [`docs/runs/2026-11-04-bai-real-model.md`](../runs/2026-11-04-bai-real-model.md)。
+- 改动已按一功能一 commit 拆分提交（见 `git log`：fix 模型、feat 确认卡、chore 忽略、docs 文档四笔）。
 - `_selftest_2026-11-03/` 仍未纳入版本管理；其中 `*.log` 命中 `.gitignore`，只有 md 会被跟踪。
 - 本轮未做：Ink TUI、斜杠命令、搜索提供方、`profile.db`、`--output-dir` 生效、单实例锁接线。

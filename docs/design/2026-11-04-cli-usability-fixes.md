@@ -96,5 +96,6 @@ git status --short                          # 无 .writing-agent/ 与 evidence.t
 - 卫生：`.gitignore` 增加 `.writing-agent/`；删除与 `evidence/` 内容逐字相同的 `evidence.tgz`。
 - 验证：`npm run typecheck` 通过；`npm test` 23 文件 263 用例通过；`npm run build` 通过；`--help` 含 `--yes`；固定模型 `--file ... --fast` 退出码 0 并导出 Markdown/HTML；伪终端（`script`）手测两道确认卡后 `创作结果：exported`。
 - 与方案偏差：无。新增两项计划外但必要的测试：`src/model/ai-sdk.test.ts`（脏输出解析）与 `src/model/ai-sdk.integration.test.ts`（本地假服务证明请求体没有 `response_format`）。
-- 未验证：真实 provider（bai / deepseek-v4.1-flash）端到端调用需要付费凭据，本轮没有凭据，留待用户用 `.env.local` 自行跑；离线证据只能证明“不再发 `response_format`、能解析脏输出”，不能证明该模型一定按 JSON 输出。
+- 真实 provider 补充实测（同日，负责人填入 `.env.local` 凭据后）：`bai / deepseek-v4.1-flash` 上同一命令到 `exported`，2 分钟、2 道门禁。2026-11-03 的 `response_format` 报错不再出现。记录见 [`docs/runs/2026-11-04-bai-real-model.md`](../runs/2026-11-04-bai-real-model.md)。
+- 仍未验证：`--style` 风格包与真实模型的组合、修改/拒绝后的真实重做、跨进程恢复后继续真实模型创作。
 
