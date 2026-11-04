@@ -20,6 +20,9 @@ coverage/
 # 测试缓存
 .vitest/
 
+# 工作目录标记与本地运行状态（首次创作时由 CLI 写入，每台机器各自生成）
+.writing-agent/
+
 # 运行产物
 articles/
 outlines/
