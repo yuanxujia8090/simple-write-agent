@@ -225,4 +225,43 @@ describe("runCli", () => {
     expect(result.out).toContain("sess-test");
     expect(result.out).toContain("articles/x.md");
   });
+
+  it("终端环境下提示逐道门禁确认", async () => {
+    await writeFile(join(cwd, "b.md"), "素材", "utf8");
+    const result = await run(
+      ["--file", "b.md", "--topic", "确认卡"],
+      {},
+      { isInteractive: true, runWriting: async () => exportedResult(cwd) },
+    );
+    expect(result.out).toContain("逐道门禁确认");
+    expect(result.out).not.toContain("门禁自动批准");
+  });
+
+  it("--yes 在终端里也跳过人工确认", async () => {
+    await writeFile(join(cwd, "c.md"), "素材", "utf8");
+    const result = await run(
+      ["--file", "c.md", "--topic", "跳过", "--yes"],
+      {},
+      { isInteractive: true, runWriting: async () => exportedResult(cwd) },
+    );
+    expect(result.out).toContain("门禁自动批准");
+  });
 });
+
+/** 交互提示测试只关心文案，产物路径给一套占位值。 */
+function exportedResult(root: string) {
+  return {
+    status: "exported" as const,
+    stage: "exported",
+    gateCount: 2,
+    error: null,
+    sessionId: "sess-ok",
+    output: {
+      outlinePath: join(root, "outlines/x.outline.md"),
+      draftPath: join(root, "articles/x.md"),
+      exportedPath: join(root, "articles/x.md"),
+      htmlPath: join(root, "articles/x.html"),
+      htmlError: null,
+    },
+  };
+}

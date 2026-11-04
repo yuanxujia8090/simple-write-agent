@@ -9,6 +9,11 @@ describe("parseCliArgs", () => {
     expect(options.help).toBe(false);
     expect(options.files).toEqual([]);
     expect(options.fast).toBe(false);
+    expect(options.yes).toBe(false);
+  });
+
+  it("解析 --yes", () => {
+    expect(parseCliArgs(["--yes"]).yes).toBe(true);
   });
 
   it("解析话题、工作目录与快速模式", () => {

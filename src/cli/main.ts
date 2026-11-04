@@ -10,6 +10,8 @@ import { loadLocalEnvFile } from "../config/env-file.js";
 import { loadConfig, type AppConfig } from "../config/index.js";
 import { loadTheme } from "../config/theme.js";
 import { AppError, exitCodeFor } from "../shared/errors.js";
+import { createTerminalConfirm } from "./confirm.js";
+import type { ConfirmationPackage, DecisionInput } from "../domain/service.js";
 import { pickStyleRef, resolveStyleRef, type StyleProfile } from "../style/index.js";
 import {
   createWorkspaceIdentity,
@@ -33,7 +35,11 @@ export type CliDeps = {
   stdout: (text: string) => void;
   stderr: (text: string) => void;
   version: string;
-  /** 测试可注入创作推进；默认走固定/真实模型 + 自动批准。 */
+  /** 是否逐道门禁人工确认；默认看 stdin/stdout 是否都是终端。 */
+  isInteractive?: boolean;
+  /** 测试可注入确认器；默认走 readline 终端交互。 */
+  confirmGate?: (gate: ConfirmationPackage, index: number) => Promise<DecisionInput>;
+  /** 测试可注入创作推进；默认走固定/真实模型 + 确认器。 */
   runWriting?: (input: {
     topic: string;
     materials: string[];
@@ -118,6 +124,7 @@ function describeInputs(
   style: StyleProfile | null,
   materials: readonly LoadedMaterial[],
   topic: string | undefined,
+  interactive: boolean,
 ): string[] {
   const lines: string[] = [];
   if (topic) {
@@ -139,7 +146,9 @@ function describeInputs(
     lines.push(`导出目录：${options.outputDir}`);
   }
   if (options.fast) {
-    lines.push("模式：快速（只保留论点和终稿确认点；非交互下将自动批准）");
+    lines.push(
+      `模式：快速（只保留论点和终稿确认点；${interactive ? "逐道人工确认" : "非交互下自动批准"}）`,
+    );
   }
   return lines;
 }
@@ -252,6 +261,10 @@ export async function runCli(
   }
 
   const { model, label: modelLabel } = resolveWritingModel(config, style);
+  const interactive =
+    options.yes === false &&
+    (deps.isInteractive ??
+      (process.stdin.isTTY === true && process.stdout.isTTY === true));
   const lines = [
     "写作 Agent 启动检查",
     "",
@@ -259,7 +272,7 @@ export async function runCli(
     "",
     ...describeConfig(config, modelLabel),
   ];
-  const inputs = describeInputs(options, style, materials, topic);
+  const inputs = describeInputs(options, style, materials, topic, interactive);
   if (inputs.length > 0) {
     lines.push("", ...inputs);
   }
@@ -287,13 +300,19 @@ export async function runCli(
     lines.push(`  已写入目录身份：${workspace.identity.workspaceId}`);
   }
 
-  lines.push("", "开始创作（非交互：门禁自动批准）…");
+  lines.push(
+    "",
+    interactive ? "开始创作（逐道门禁确认）…" : "开始创作（非交互：门禁自动批准）…",
+  );
   deps.stdout(lines.join("\n"));
 
   const mode = options.fast ? "fast" : "normal";
   const materialPayload = materialsForStart(materials);
 
   try {
+    const confirm = interactive
+      ? (deps.confirmGate ?? createTerminalConfirm())
+      : undefined;
     const runWriting =
       deps.runWriting ??
       ((input) =>
@@ -305,6 +324,7 @@ export async function runCli(
           workspaceId: input.workspace.identity?.workspaceId ?? null,
           model: input.model,
           styleProfile: input.style,
+          ...(confirm === undefined ? {} : { confirm }),
           theme: loadTheme(
             options.theme === undefined ? {} : { path: options.theme },
           ).theme,

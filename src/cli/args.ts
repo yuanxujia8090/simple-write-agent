@@ -10,6 +10,8 @@ export type CliOptions = {
   cwd: string | undefined;
   outputDir: string | undefined;
   fast: boolean;
+  /** 跳过人工确认，直接自动批准每道门禁。 */
+  yes: boolean;
   debug: boolean;
   help: boolean;
   version: boolean;
@@ -23,6 +25,7 @@ export const defaultCliOptions: CliOptions = {
   cwd: undefined,
   outputDir: undefined,
   fast: false,
+  yes: false,
   debug: false,
   help: false,
   version: false,
@@ -36,6 +39,7 @@ const PARSE_CONFIG = {
   cwd: { type: "string" },
   "output-dir": { type: "string" },
   fast: { type: "boolean" },
+  yes: { type: "boolean" },
   debug: { type: "boolean" },
   help: { type: "boolean", short: "h" },
   version: { type: "boolean", short: "v" },
@@ -98,6 +102,7 @@ export function parseCliArgs(argv: readonly string[]): CliOptions {
     cwd: str("cwd"),
     outputDir: str("output-dir"),
     fast: bool("fast"),
+    yes: bool("yes"),
     debug: bool("debug"),
     help: bool("help"),
     version: bool("version"),

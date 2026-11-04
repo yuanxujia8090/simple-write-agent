@@ -7,6 +7,7 @@ import { createFileWriter } from "../artifacts/files.js";
 import { loadTheme, type Theme } from "../config/theme.js";
 import type { WritingModel } from "../agent/fixed-model.js";
 import type {
+  ConfirmationPackage,
   DecisionInput,
   GraphRunner,
   RunOutput,
@@ -29,6 +30,11 @@ export type AutoRunOptions = {
   /** 测试可注入 runner；默认内存业务库 + 固定/注入模型。 */
   runner?: GraphRunner;
   maxGates?: number;
+  /**
+   * 门禁确认。不给就自动批准（现有非交互行为）。
+   * 给了就让调用方逐道门禁决定，`index` 从 1 开始，供确认卡编号。
+   */
+  confirm?: (gate: ConfirmationPackage, index: number) => Promise<DecisionInput>;
 };
 
 export type AutoRunResult = {
@@ -84,7 +90,11 @@ export async function runAutoApprovedWriting(options: AutoRunOptions): Promise<A
         "可能存在回退死循环；请带 --debug 重试或改用 npm run replay 排查",
       );
     }
-    state = await runner.resume(approve(state.gate));
+    state = await runner.resume(
+      options.confirm === undefined
+        ? approve(state.gate)
+        : await options.confirm(state.gate, gateCount),
+    );
   }
 
   const emptyOutput: RunOutput = {
