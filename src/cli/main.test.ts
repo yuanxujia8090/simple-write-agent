@@ -6,6 +6,16 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { runCli } from "./main.js";
+import type { SearchPort } from "../search/index.js";
+
+/** 单测默认不联网：搜索注入固定结果，需要真实行为的用例自行覆盖。 */
+const stubSearch: SearchPort = {
+  name: "test-stub",
+  search: async () => ({
+    ok: true as const,
+    hits: [{ title: "stub 结果", url: "https://example.com/stub", description: "stub 摘要", position: 1 }],
+  }),
+};
 
 let root: string;
 let homeDir: string;
@@ -28,6 +38,7 @@ async function run(
     stdout: (text) => out.push(text),
     stderr: (text) => err.push(text),
     version: "9.9.9",
+    search: stubSearch,
     ...extra,
   });
   return { code, out: out.join("\n"), err: err.join("\n") };
@@ -245,6 +256,61 @@ describe("runCli", () => {
       { isInteractive: true, runWriting: async () => exportedResult(cwd) },
     );
     expect(result.out).toContain("门禁自动批准");
+  });
+
+  it("默认把搜索结果并进素材，并在启动日志说明命中条数", async () => {
+    await writeFile(join(cwd, "d.md"), "素材", "utf8");
+    let seen: string[] = [];
+    const result = await run(
+      ["--file", "d.md", "--topic", "搜索并入"],
+      {},
+      {
+        runWriting: async (input) => {
+          seen = input.materials;
+          return exportedResult(cwd);
+        },
+      },
+    );
+    expect(result.code).toBe(0);
+    expect(result.out).toContain("外部搜索：test-stub，命中 1 条");
+    expect(seen.some((item) => item.includes("https://example.com/stub"))).toBe(true);
+    expect(seen.some((item) => item.includes("未经核实"))).toBe(true);
+  });
+
+  it("--no-search 完全不调用搜索接口", async () => {
+    await writeFile(join(cwd, "e.md"), "素材", "utf8");
+    let calls = 0;
+    const counting: SearchPort = {
+      name: "counting",
+      search: async () => {
+        calls += 1;
+        return { ok: true as const, hits: [] };
+      },
+    };
+    const result = await run(
+      ["--file", "e.md", "--topic", "不搜", "--no-search"],
+      {},
+      { search: counting, runWriting: async () => exportedResult(cwd) },
+    );
+    expect(result.code).toBe(0);
+    expect(calls).toBe(0);
+    expect(result.out).toContain("外部搜索：已关闭（--no-search）");
+  });
+
+  it("搜索失败只告警，创作继续", async () => {
+    await writeFile(join(cwd, "f.md"), "素材", "utf8");
+    const failing: SearchPort = {
+      name: "broken",
+      search: async () => ({ ok: false as const, error: "Bing 返回 HTTP 503" }),
+    };
+    const result = await run(
+      ["--file", "f.md", "--topic", "搜索失败", "--fast"],
+      {},
+      { search: failing, runWriting: async () => exportedResult(cwd) },
+    );
+    expect(result.code).toBe(0);
+    expect(result.out).toContain("外部搜索：broken 失败");
+    expect(result.err).toContain("Bing 返回 HTTP 503");
   });
 });
 

@@ -11,6 +11,12 @@ import { loadConfig, type AppConfig } from "../config/index.js";
 import { loadTheme } from "../config/theme.js";
 import { AppError, exitCodeFor } from "../shared/errors.js";
 import { createTerminalConfirm } from "./confirm.js";
+import {
+  createBingRssSearch,
+  DEFAULT_SEARCH_LIMIT,
+  formatHitsForMaterials,
+  type SearchPort,
+} from "../search/index.js";
 import type { ConfirmationPackage, DecisionInput } from "../domain/service.js";
 import { pickStyleRef, resolveStyleRef, type StyleProfile } from "../style/index.js";
 import {
@@ -39,6 +45,8 @@ export type CliDeps = {
   isInteractive?: boolean;
   /** 测试可注入确认器；默认走 readline 终端交互。 */
   confirmGate?: (gate: ConfirmationPackage, index: number) => Promise<DecisionInput>;
+  /** 测试可注入搜索；默认 Bing RSS 兜底。 */
+  search?: SearchPort;
   /** 测试可注入创作推进；默认走固定/真实模型 + 确认器。 */
   runWriting?: (input: {
     topic: string;
@@ -111,7 +119,7 @@ function describeConfig(config: AppConfig, modelLabel: string): string[] {
     `  模型地址：${config.model.baseURL}`,
     `  模型密钥：${config.model.apiKey ? "已配置" : "未配置"}`,
     `  本次创作模型：${modelLabel}`,
-    `  搜索：${config.search.provider}（密钥${config.search.apiKey ? "已配置" : "未配置"}）`,
+    `  搜索配置：${config.search.provider}（密钥${config.search.apiKey ? "已配置" : "未配置"}；本轮统一用 Bing RSS 兜底）`,
   ];
   for (const warning of config.warnings) {
     lines.push(`  提示：${warning}`);
@@ -300,14 +308,32 @@ export async function runCli(
     lines.push(`  已写入目录身份：${workspace.identity.workspaceId}`);
   }
 
+  const mode = options.fast ? "fast" : "normal";
+  const materialPayload = materialsForStart(materials);
+
+  // 兜底搜索：默认开，--no-search 关。失败只告警，不阻断创作。
+  // 放在打印前跑，让启动日志一次说完「用了什么搜索、命中几条」。
+  const searchPort = options.noSearch ? null : (deps.search ?? createBingRssSearch());
+  if (searchPort === null) {
+    lines.push("外部搜索：已关闭（--no-search）");
+  } else if (topic !== undefined) {
+    const outcome = await searchPort.search(topic, DEFAULT_SEARCH_LIMIT);
+    if (outcome.ok) {
+      materialPayload.push(formatHitsForMaterials(topic, outcome.hits));
+      lines.push(
+        `外部搜索：${searchPort.name}，命中 ${outcome.hits.length} 条（已并入素材；来源 bing.com）`,
+      );
+    } else {
+      lines.push(`外部搜索：${searchPort.name} 失败，本次不使用外部结果`);
+      deps.stderr(`警告：外部搜索失败（${outcome.error}）；继续用本地素材创作`);
+    }
+  }
+
   lines.push(
     "",
     interactive ? "开始创作（逐道门禁确认）…" : "开始创作（非交互：门禁自动批准）…",
   );
   deps.stdout(lines.join("\n"));
-
-  const mode = options.fast ? "fast" : "normal";
-  const materialPayload = materialsForStart(materials);
 
   try {
     const confirm = interactive

@@ -12,6 +12,8 @@ export type CliOptions = {
   fast: boolean;
   /** 跳过人工确认，直接自动批准每道门禁。 */
   yes: boolean;
+  /** 关闭默认的兜底外部搜索（不发请求到 bing.com）。 */
+  noSearch: boolean;
   debug: boolean;
   help: boolean;
   version: boolean;
@@ -26,6 +28,7 @@ export const defaultCliOptions: CliOptions = {
   outputDir: undefined,
   fast: false,
   yes: false,
+  noSearch: false,
   debug: false,
   help: false,
   version: false,
@@ -40,6 +43,7 @@ const PARSE_CONFIG = {
   "output-dir": { type: "string" },
   fast: { type: "boolean" },
   yes: { type: "boolean" },
+  "no-search": { type: "boolean" },
   debug: { type: "boolean" },
   help: { type: "boolean", short: "h" },
   version: { type: "boolean", short: "v" },
@@ -103,6 +107,7 @@ export function parseCliArgs(argv: readonly string[]): CliOptions {
     outputDir: str("output-dir"),
     fast: bool("fast"),
     yes: bool("yes"),
+    noSearch: bool("no-search"),
     debug: bool("debug"),
     help: bool("help"),
     version: bool("version"),
