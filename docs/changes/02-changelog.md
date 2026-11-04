@@ -239,6 +239,8 @@ _后续变更追加在最新日期下方，不删除历史记录。_
 
 ## 2026-11-04
 
+- 零配置兜底搜索：新增 `SearchPort` 与 Bing RSS 实现，默认用话题搜一次（最多 5 条）并入素材；`--no-search` 关闭；失败只告警。[方案](../design/2026-11-04-search-provider.md)｜[决策 0013](../adr/0013-default-external-search-bing-rss.md)
+
 - 真实模型兼容：结构化调用从 `generateObject`（依赖 `response_format`，OpenAI 兼容网关常不支持）改为 `generateText` + JSON Schema 提示 + JSON 提取 + zod 校验，失败重试一次；新增脏输出解析与本地假服务集成测试。[变更记录](2026-11-04-cli-usability-fixes.md)｜[阶段方案](../design/2026-11-04-cli-usability-fixes.md)
 - 门禁确认卡：终端下逐道门禁显示推荐/依据/风险/备选/预览，支持批准、修改、拒绝；非终端或 `--yes` 保持自动批准。
 - 工作区卫生：`.gitignore` 增加 `.writing-agent/`；删除与 `evidence/` 逐字相同的 `_selftest_2026-11-03/evidence.tgz`。

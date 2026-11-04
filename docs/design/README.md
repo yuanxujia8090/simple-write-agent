@@ -8,6 +8,7 @@
 
 | 日期 | 阶段 | 方案文档 | 变更记录 | 状态 |
 | --- | --- | --- | --- | --- |
+| 2026-11-04 | 零配置兜底搜索（Bing RSS） | [方案](2026-11-04-search-provider.md) | [决策 0013](../adr/0013-default-external-search-bing-rss.md) | 已完成 |
 | 2026-11-04 | 真实模型兼容、门禁确认卡与工作区卫生 | [方案](2026-11-04-cli-usability-fixes.md) | [变更](../changes/2026-11-04-cli-usability-fixes.md) | 已完成（真实 provider 未跑） |
 | 2026-11-03 | 多风格本地加载 | [方案](2026-11-03-multi-style-loader.md) | [变更](../changes/2026-11-03-multi-style-loader.md) | 已完成 |
 | 2026-11-03 | CLI 素材→主稿最小路径 | [方案](2026-11-03-cli-material-to-draft.md) | [变更](../changes/2026-11-03-cli-material-to-draft.md) | 已完成 |
