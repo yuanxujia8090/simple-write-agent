@@ -2,13 +2,15 @@
 
 本地运行的公众号长文写作 Agent：从话题或 `.txt`/`.md` 素材开始，经过研究、论点、大纲、草稿和审查，导出 Markdown 主稿与同源 HTML。
 
-当前状态（2026-11-03）：启动检查、配置/工作目录、首条写作闭环（固定模型）、HTML 导出、持久化能力与本地多风格加载已具备；CLI 可用 `--file` 从素材非交互跑到主稿 Markdown。不带 `--file`/`--topic` 只打印启动检查。协作顺序为：**先实现、阶段留证、完成后学习**。
+当前状态（2026-11-04）：启动检查、配置/工作目录、首条写作闭环、HTML 导出、持久化、CLI 素材→主稿、本地多风格加载已具备；终端里逐道门禁人工确认（批准/修改/拒绝），非终端或 `--yes` 自动批准；结构化模型调用不再依赖 `response_format`。不带 `--file`/`--topic` 只打印启动检查。协作顺序为：**先实现、阶段留证、完成后学习**。
 
 ```bash
 npm install                  # 安装依赖
 npm run dev -- --help        # 开发模式查看帮助
-# 素材→成稿（无 API Key 时用固定模型，不联网）
+# 素材→成稿（无 API Key 时用固定模型，不联网）；终端里逐道门禁确认
 npm run dev -- --file ./notes.md --topic "测" --fast
+# 一路自动批准，适合脚本
+npm run dev -- --file ./notes.md --topic "测" --fast --yes
 npm run typecheck            # 类型检查
 npm test                     # 单元测试
 npm run build                # 构建到 dist/
@@ -25,4 +27,4 @@ npm run replay               # 重放写作闭环（固定数据）：--scenario
 - [开发准备审查与待验证问题](docs/design/2026-10-29-development-readiness-review.md)
 - [项目协作规则](agents.md) · [领域术语](CONTEXT.md)
 
-下一步：持久化与文件保护（SQLite 落库、跨进程恢复、外部编辑检测）。阶段记录见 [启动与关键机制验证](docs/design/2026-10-29-bootstrap-checkpoint-experiments.md)、[首条写作闭环](docs/design/2026-10-29-first-writing-loop.md) 及对应 [变更记录](docs/changes/2026-10-29-first-writing-loop.md)。
+下一步：用 `.env.local` 里的真实 provider 跑一次端到端（`bai` / `deepseek-v4.1-flash`），再决定是否补 Ink TUI、斜杠命令与搜索提供方。阶段记录见 [阶段方案索引](docs/design/README.md) 与 [变更时间线](docs/changes/02-changelog.md)。
